@@ -3,13 +3,14 @@ package rest_api.service
 import com.example.api.repository.model.Employee
 import org.springframework.stereotype.Service
 import org.springframework.http.HttpStatus
+import rest_api.repository.TransactionRepository
 import rest_api.repository.model.Transaction
 
 /**
  * Service for interactions with employee domain object
  */
 @Service
-class TransactionService {
+class TransactionService (private val transactionRepository: TransactionRepository) {
 
     /**
      * Create transaction.
@@ -19,6 +20,10 @@ class TransactionService {
      */
     fun createTransaction(tx: Transaction): Boolean {
         // TODO: do!!
+        val id = tx.id
+        val transfer = tx.transfer
+        val UTxO = tx.UTxO
+        transactionRepository.save(tx)
         return true
     }
 
@@ -36,5 +41,5 @@ class TransactionService {
         return 4
     }
 
-    fun getTransactionHistoryForAll(): Int = 5
+    fun getTransactionHistoryForAll(): List<Transaction> = transactionRepository.findAll()
 }

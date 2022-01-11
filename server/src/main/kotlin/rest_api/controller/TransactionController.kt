@@ -17,7 +17,7 @@ import rest_api.repository.model.Transaction
 @RestController
 class TransactionController (private val transactionService: TransactionService) {
 
-    @PostMapping("/submit_transaction>")
+    @PostMapping("/submit_transaction")
     fun createTransaction(@RequestBody payload: Transaction):
             Boolean = transactionService.createTransaction(payload)
 
@@ -37,6 +37,6 @@ class TransactionController (private val transactionService: TransactionService)
 
     @GetMapping("/history")
     fun getTransactionHistoryForAll():
-            Int = transactionService.getTransactionHistoryForAll()
+            List<Transaction> = transactionService.getTransactionHistoryForAll()
 
 }

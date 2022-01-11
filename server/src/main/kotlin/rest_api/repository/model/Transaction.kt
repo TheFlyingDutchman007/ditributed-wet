@@ -19,10 +19,10 @@ import javax.persistence.Table
 @Table(name = "transaction")
 data class Transaction(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: String, // long is only 64 bits - need 128
+    val id: String?, // long is only 64 bits - need 128
 
     @Column(name = "transfer", nullable = false)
-    var transfer: String,
+    val transfer: String,
 
     @Column(name = "UTxO", nullable = false)
     val UTxO: String,

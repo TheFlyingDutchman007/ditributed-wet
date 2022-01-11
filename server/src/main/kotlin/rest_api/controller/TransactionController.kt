@@ -18,12 +18,14 @@ import rest_api.repository.model.Transaction
 class TransactionController (private val transactionService: TransactionService) {
 
     @PostMapping("/submit_transaction")
-    fun createTransaction(@RequestBody payload: Transaction):
+    fun createTransaction(@RequestBody payload: Transaction, ):
             Boolean = transactionService.createTransaction(payload)
 
-    @PutMapping("/transfer/{address}/{amount}")
-    fun transferCoins(@PathVariable("address") address: Long, @PathVariable("amount") amount: Long ):
-            Int = transactionService.transferCoins(address, amount)
+    @PutMapping("/transfer/{sender_address}/{receiver_address}/{amount}")
+    fun transferCoins(@PathVariable("sender_address") sender_address: String,
+                      @PathVariable("receiver_address") receiver_address: String,
+                      @PathVariable("amount") amount: Long):
+            Boolean = transactionService.transferCoins(sender_address,receiver_address, amount)
 
     // TODO: add controller for atomic transaction list
 

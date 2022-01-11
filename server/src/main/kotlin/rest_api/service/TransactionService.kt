@@ -1,8 +1,8 @@
 package rest_api.service
 
-import com.example.api.repository.model.Employee
 import org.springframework.stereotype.Service
 import org.springframework.http.HttpStatus
+import org.springframework.web.bind.annotation.RequestBody
 import rest_api.repository.TransactionRepository
 import rest_api.repository.model.Transaction
 
@@ -20,17 +20,30 @@ class TransactionService (private val transactionRepository: TransactionReposito
      */
     fun createTransaction(tx: Transaction): Boolean {
         // TODO: do!!
-        val id = tx.id
-        val transfer = tx.transfer
-        val UTxO = tx.UTxO
+        /*println(tx.inputs_tx_id)
+        println(tx.inputs_address)
+        println(tx.outputs_address)
+        println(tx.outputs_coins)*/
+        //println(tx)
         transactionRepository.save(tx)
         return true
     }
 
 
-    fun transferCoins(address: Long, amount: Long): Int {
+    fun transferCoins(sender_address: String, receiver_address: String, amount: Long): Boolean {
         // TODO: do!!
-        return 2
+        val txs = transactionRepository.findAll()
+        var count: Long = 0
+        for (t in txs){
+            for ((i, o) in t.outputs_address.withIndex()){
+                if (o == sender_address){
+                    count += t.outputs_coins[i]
+                }
+            }
+        }
+        if (count >= amount)
+            return true
+        return false
     }
 
     fun getUnspentTransactions(address: Long): Int{

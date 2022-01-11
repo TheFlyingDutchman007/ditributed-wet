@@ -36,7 +36,5 @@ class TransactionService {
         return 4
     }
 
-    fun getTransactionHistoryForAll(): Int{
-        return 5
-    }
+    fun getTransactionHistoryForAll(): Int = 5
 }

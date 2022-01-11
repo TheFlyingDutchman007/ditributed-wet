@@ -17,7 +17,7 @@ import javax.persistence.Table
 @Table(name = "client")
 data class Client(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long?, // TODO: long is only 64 bits - need 128
+    val id: String, // long is only 64 bits - need 128
     @Column(name = "coins", nullable = false)
     val coins: ULong,
 )

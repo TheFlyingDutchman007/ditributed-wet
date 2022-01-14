@@ -5,6 +5,8 @@ import com.google.protobuf.kotlin.toByteStringUtf8
 import io.grpc.ManagedChannelBuilder
 import io.grpc.ServerBuilder
 import kotlinx.coroutines.*
+import org.apache.log4j.BasicConfigurator
+import zookeeper.kotlin.ZooKeeperKt
 
 val biSerializer = object : ByteStringBiSerializer<String> {
     override fun serialize(obj: String) = obj.toByteStringUtf8()
@@ -14,28 +16,30 @@ val biSerializer = object : ByteStringBiSerializer<String> {
 
 suspend fun main(args: Array<String>) = coroutineScope {
 
-    println("start running")
+    //println("start running")
     // Displays all debug messages from gRPC
     //org.apache.log4j.BasicConfigurator.configure()
 
     // Take the ID as the port number
     val id = args[0].toInt()
-
     // Init services
     val learnerService = LearnerService(this)
     val acceptorService = AcceptorService(id)
 
+    //val zkSockets = (1..3).map { Pair("127.0.0.1", 2180 + it) }
+    //val zkConnectionString = makeConnectionString(zkSockets)
+
     // TODO: Build gRPC server
     val server = ServerBuilder.forPort(id)
         .apply {
-            if (id == 2181 || id == 2182) // Apply your own logic: who should be an acceptor
+            if (id > 0) // Apply your own logic: who should be an acceptor
                 // TODO: addService(acceptorService)
                 //addService(acceptorService)
                 println(id)
         }
         .apply {
-            if (id == 2183) // Apply your own logic: who should be a learner
-                //TODO: addService(learnerService)
+            if (id > 0) // Apply your own logic: who should be a learner
+                // TODO: addService(learnerService)
                 //addService(learnerService)
                 println(id)
         }
@@ -69,24 +73,8 @@ suspend fun main(args: Array<String>) = coroutineScope {
      * TODO: You Should implement an omega failure detector.
      */
     val omega = object : OmegaFailureDetector<ID> {
-        //override val leader: ID get() = id
-        override val leader: ID get() = 2181
-        // this is the receiving alive method?!
+        override val leader: ID get() = id
         override fun addWatcher(observer: suspend () -> Unit) {
-            /*runBlocking {
-                while (true) {
-                    if (leader == id) {
-                        //println("if stuff")
-                        atomicBroadcast._send(id.toString().toByteStringUtf8())
-                        //send alive to all
-                    } else {
-                        println("else stuff")
-                        //silentPeriod++
-                        // if silendPeriod > limit -> NewLreader(id)
-                    }
-                    //sleep some time
-                }
-            }*/
         }
     }
 

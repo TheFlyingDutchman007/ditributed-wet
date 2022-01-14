@@ -23,14 +23,6 @@ data class Transaction(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val tx_id: String?, // long is only 64 bits - need 128
 
-    /*@Column(name = "inputs_tx_id", nullable = false)
-    @ElementCollection
-    val inputs_tx_id: input_tx_id,
-
-    @Column(name = "outputs_address", nullable = false)
-    @ElementCollection
-    val outputs_address: output_address,*/
-
     @Column(name = "inputs_tx_id", nullable = false)
     @ElementCollection
     val inputs_tx_id: input_tx_id,

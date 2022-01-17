@@ -6,7 +6,7 @@ import org.springframework.data.jpa.repository.Query
 import org.springframework.transaction.annotation.Transactional
 import rest_api.repository.model.UTxOs
 
-
+/*
 interface ClientUTxORepository: JpaRepository<UTxOs, String> {
 
     /*@Modifying
@@ -19,4 +19,4 @@ interface ClientUTxORepository: JpaRepository<UTxOs, String> {
     @Transactional
     @Query("update UTxOs client set client.lst = ?1 where client.id = ?2")
     fun setUtxoList(lst: List<Pair<String?,String>>, id: String): Int
-}
+}*/

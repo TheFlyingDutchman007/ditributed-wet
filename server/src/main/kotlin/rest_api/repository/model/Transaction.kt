@@ -17,7 +17,7 @@ typealias output_coins = List<Long> // (address, coins) = transfer
 /**
  * Represents the database entity for storing the transaction details.
  */
-@Entity
+/*@Entity
 @Table(name = "transaction")
 data class Transaction(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -36,6 +36,25 @@ data class Transaction(
     val outputs_address: output_address,
 
     @Column(name = "outputs_coins", nullable = false)
+    @ElementCollection
+    val outputs_coins: output_coins,
+
+    )*/
+
+
+data class Transaction(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    val tx_id: String?, // long is only 64 bits - need 128
+
+    @ElementCollection
+    val inputs_tx_id: input_tx_id,
+
+    @ElementCollection
+    val inputs_address: input_address,
+
+    @ElementCollection
+    val outputs_address: output_address,
+
     @ElementCollection
     val outputs_coins: output_coins,
 

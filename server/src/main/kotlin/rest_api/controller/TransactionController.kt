@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestBody
 import rest_api.service.TransactionService
 import rest_api.repository.model.Transaction
+import rest_api.repository.model.TransactionsLedger
+import rest_api.repository.model.UTxOs
 
 /**
  * Controller for REST API endpoints
@@ -30,8 +32,8 @@ class TransactionController (private val transactionService: TransactionService)
     // TODO: add controller for atomic transaction list
 
     @GetMapping("/unspent/{address}")
-    fun getUnspentTransactions(@PathVariable("address") address: Long):
-            Int = transactionService.getUnspentTransactions(address)
+    fun getUnspentTransactions(@PathVariable("address") address: String):
+            Map<String?,String> = transactionService.getUnspentTransactions(address)
 
     @GetMapping("/history/{address}")
     fun getTransactionHistoryForAddress(@PathVariable("address") address: Long):
@@ -39,6 +41,6 @@ class TransactionController (private val transactionService: TransactionService)
 
     @GetMapping("/history")
     fun getTransactionHistoryForAll():
-            List<Transaction> = transactionService.getTransactionHistoryForAll()
+            TransactionsLedger = transactionService.getTransactionHistoryForAll()
 
 }

@@ -1,6 +1,7 @@
 package rest_api.repository.model
 
 import com.fasterxml.jackson.annotation.JsonProperty
+import kotlinx.serialization.Serializable
 import org.hibernate.annotations.CollectionType
 import org.springframework.beans.factory.annotation.Value
 import java.math.BigInteger
@@ -41,7 +42,7 @@ data class Transaction(
 
     )*/
 
-
+@Serializable
 data class Transaction(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val tx_id: String?, // long is only 64 bits - need 128

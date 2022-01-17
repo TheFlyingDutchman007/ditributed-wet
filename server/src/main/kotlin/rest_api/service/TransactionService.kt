@@ -31,9 +31,9 @@ fun gen_clients(service: TransactionService ,ledger: TransactionsLedger){
         /*val genesisUTxOTxid  = service.getUnspentTransactions("0")["0->" +(i-1).toString()] // he got only 1 utxo (bank of money)
         println(service.getUnspentTransactions("0"))
         println(service.getUnspentTransactions("0")["0->" +(i-1).toString()])*/
-        val tx = getTxFromLedger(ledger,"0->" +(i-1).toString())
+        val tx = getTxFromLedger(ledger,(i-1).toString())
         val genesisMoney = getCoinsFromTxOutput(tx,"0")
-        val genTx = Transaction(("0" +"->" + i.toString()), listOf("0->"+((i-1).toString())), listOf("0"),
+        val genTx = Transaction((i.toString()), listOf((i-1).toString()), listOf("0"),
             listOf(i.toString(),"0"), listOf(100, genesisMoney-100))
         service.createTransaction(genTx)
     }
@@ -45,15 +45,18 @@ fun gen_clients(service: TransactionService ,ledger: TransactionsLedger){
  */
 @Service
 class TransactionService () {
+
+    //TODO: manage id of tx...
+
     final var ledger: TransactionsLedger
     final var clients : Clients
     init {
         // init ledger
-        val init_transaction = Transaction("0->0", listOf("-1"),listOf("-1"),listOf("0"),listOf(initMoney))
+        val init_transaction = Transaction("0", listOf("-1"),listOf("-1"),listOf("0"),listOf(initMoney))
         this.ledger = TransactionsLedger(mutableListOf(init_transaction))
 
         // init clients with genesis
-        val genesis_utxo = UTxOs("0",mutableMapOf(Pair("0->0",Unit)))
+        val genesis_utxo = UTxOs("0",mutableMapOf(Pair("0",Unit)))
         this.clients = Clients(mutableMapOf(Pair("0",genesis_utxo)))
 
         gen_clients(this,ledger)

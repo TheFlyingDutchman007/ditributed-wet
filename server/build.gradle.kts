@@ -10,6 +10,7 @@ plugins {
     kotlin("plugin.spring") version "1.5.30" //  version kotlinVersion
     // kotlin-jpa is wrapped on top of no-arg - https://kotlinlang.org/docs/no-arg-plugin.html#jpa-support
     kotlin("plugin.jpa") version "1.5.30" // version kotlinVersion
+    kotlin("plugin.serialization") version "1.6.10"
 }
 
 java.sourceCompatibility = JavaVersion.VERSION_11
@@ -44,9 +45,11 @@ dependencies {
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+    implementation("junit:junit:4.13.1")
     developmentOnly("org.springframework.boot:spring-boot-devtools")
     runtimeOnly("com.h2database:h2")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.2.2")
 }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {

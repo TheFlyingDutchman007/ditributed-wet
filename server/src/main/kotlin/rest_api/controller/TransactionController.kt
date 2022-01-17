@@ -33,7 +33,7 @@ class TransactionController (private val transactionService: TransactionService)
 
     @GetMapping("/unspent/{address}")
     fun getUnspentTransactions(@PathVariable("address") address: String):
-            Map<String?,String> = transactionService.getUnspentTransactions(address)
+            Map<String?,Unit> = transactionService.getUnspentTransactions(address)
 
     @GetMapping("/history/{address}")
     fun getTransactionHistoryForAddress(@PathVariable("address") address: Long):

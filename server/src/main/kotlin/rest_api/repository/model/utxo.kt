@@ -21,6 +21,6 @@ data class UTxOs(
 
     @Column
     @ElementCollection
-    val lst: MutableMap<String?, String> // UTxO (Tx_id, address)
+    val lst: MutableMap<String?, Unit> // UTxO (Tx_id, address)
 )
 

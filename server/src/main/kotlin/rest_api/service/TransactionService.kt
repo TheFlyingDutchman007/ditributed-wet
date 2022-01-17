@@ -53,7 +53,7 @@ class TransactionService () {
         this.ledger = TransactionsLedger(mutableListOf(init_transaction))
 
         // init clients with genesis
-        val genesis_utxo = UTxOs("0",mutableMapOf(Pair("0->0","0")))
+        val genesis_utxo = UTxOs("0",mutableMapOf(Pair("0->0",Unit)))
         this.clients = Clients(mutableMapOf(Pair("0",genesis_utxo)))
 
         gen_clients(this,ledger)
@@ -79,14 +79,14 @@ class TransactionService () {
             // create output utxo's for receivers and send to the servers
             for (recv_addr in tx.outputs_address){
                 // remember that we assume that the client exists
-                clients.addresses[recv_addr]!!.lst[tx.tx_id] = recv_addr
+                clients.addresses[recv_addr]!!.lst[tx.tx_id] = Unit
             }
 
         }else{ // client is new!!
             // TODO: add client to clients - need to?????
             val genTx = Transaction("-1", listOf("-1"), listOf("0"), listOf(sender_addr), listOf(100))
             ledger.ledger.add(genTx)
-            clients.addresses[sender_addr] = UTxOs(sender_addr, mutableMapOf(Pair("-1",sender_addr)))
+            clients.addresses[sender_addr] = UTxOs(sender_addr, mutableMapOf(Pair("-1",Unit)))
 
         }
 
@@ -115,7 +115,7 @@ class TransactionService () {
         return false
     }
 
-    fun getUnspentTransactions(address: String): Map<String?,String>{
+    fun getUnspentTransactions(address: String): Map<String?,Unit>{
         return clients.addresses[address]!!.lst
     }
 

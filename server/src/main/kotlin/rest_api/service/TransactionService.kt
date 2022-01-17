@@ -46,7 +46,8 @@ fun gen_clients(service: TransactionService ,ledger: TransactionsLedger){
 @Service
 class TransactionService () {
 
-    //TODO: manage id of tx...
+    // TODO: manage id of tx...
+    // TODO: add limit for history (from the end back???)
 
     final var ledger: TransactionsLedger
     final var clients : Clients
@@ -101,7 +102,6 @@ class TransactionService () {
 
 
     fun transferCoins(sender_address: String, receiver_address: String, amount: Long): Boolean {
-        // TODO: do!!
 
         // for start, we search coins + build input list
         val input_tx_id = mutableListOf<String>()
@@ -140,25 +140,13 @@ class TransactionService () {
 
         return true
 
-        /*val txs = transactionRepository.findAll()
-        val utxo = clientUTxOsRepository.findById(sender_address)
-        println(utxo)
-        var count: Long = 0
-        for (t in txs){
-            for ((i, o) in t.outputs_address.withIndex()){
-                if (o == sender_address){
-                    count += t.outputs_coins[i]
-                }
-            }
-        }
-        if (count >= amount)
-            return true*/
     }
 
     fun getUnspentTransactions(address: String): Map<String,Unit>{
         return clients.addresses[address]!!.lst
     }
 
+    // ------ for debugging ------------------------
     fun getCoins(address: String) : Long{
         val utxos = getUnspentTransactions(address).keys
         var coins : Long = 0
@@ -169,9 +157,24 @@ class TransactionService () {
         }
         return coins
     }
+    // ---------------------------------------------
 
-    fun getTransactionHistory(address: Long): Int{
-        return 4
+
+    fun getTransactionHistory(address: String): TransactionsLedger{
+        val retLedger = TransactionsLedger(mutableListOf())
+        for (tx in ledger.ledger.reversed()){
+            if (tx.inputs_address[0] == address){
+                retLedger.ledger.add(0,tx)
+                continue
+            }
+            for (recv in tx.outputs_address){
+                if (recv == address){
+                    retLedger.ledger.add(0,tx)
+                    continue
+                }
+            }
+        }
+        return retLedger
     }
 
     fun getTransactionHistoryForAll(): TransactionsLedger {

@@ -41,8 +41,8 @@ class TransactionController (private val transactionService: TransactionService)
             Long = transactionService.getCoins(address)
     // --------------------------------------------------------
     @GetMapping("/history/{address}")
-    fun getTransactionHistoryForAddress(@PathVariable("address") address: Long):
-            Int = transactionService.getTransactionHistory(address)
+    fun getTransactionHistoryForAddress(@PathVariable("address") address: String):
+            TransactionsLedger = transactionService.getTransactionHistory(address)
 
     @GetMapping("/history")
     fun getTransactionHistoryForAll():

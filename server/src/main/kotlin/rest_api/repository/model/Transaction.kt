@@ -45,7 +45,7 @@ data class Transaction(
 @Serializable
 data class Transaction(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val tx_id: String?, // long is only 64 bits - need 128
+    val tx_id: String, // long is only 64 bits - need 128
 
     @ElementCollection
     val inputs_tx_id: input_tx_id,

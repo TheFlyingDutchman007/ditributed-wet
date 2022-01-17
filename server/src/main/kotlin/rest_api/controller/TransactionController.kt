@@ -20,10 +20,10 @@ import rest_api.repository.model.UTxOs
 class TransactionController (private val transactionService: TransactionService) {
 
     @PostMapping("/submit_transaction")
-    fun createTransaction(@RequestBody payload: Transaction, ):
+    fun createTransaction(@RequestBody payload: Transaction):
             Boolean = transactionService.createTransaction(payload)
 
-    @PutMapping("/transfer/{sender_address}/{receiver_address}/{amount}")
+    @GetMapping("/transfer/{sender_address}/{receiver_address}/{amount}")
     fun transferCoins(@PathVariable("sender_address") sender_address: String,
                       @PathVariable("receiver_address") receiver_address: String,
                       @PathVariable("amount") amount: Long):
@@ -33,8 +33,13 @@ class TransactionController (private val transactionService: TransactionService)
 
     @GetMapping("/unspent/{address}")
     fun getUnspentTransactions(@PathVariable("address") address: String):
-            Map<String?,Unit> = transactionService.getUnspentTransactions(address)
+            Map<String,Unit> = transactionService.getUnspentTransactions(address)
 
+    // --------- for debugging -------------------------------------
+    @GetMapping("/coins/{address}")
+    fun getCoins(@PathVariable("address") address: String):
+            Long = transactionService.getCoins(address)
+    // --------------------------------------------------------
     @GetMapping("/history/{address}")
     fun getTransactionHistoryForAddress(@PathVariable("address") address: Long):
             Int = transactionService.getTransactionHistory(address)

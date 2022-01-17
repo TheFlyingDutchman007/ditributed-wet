@@ -10,7 +10,7 @@ import kotlin.reflect.typeOf
 const val initMoney : Long = 10000
 
 
-fun getTxFromLedger(ledger: TransactionsLedger, tx_id : String?) : Transaction{
+fun getTxFromLedger(ledger: TransactionsLedger, tx_id : String) : Transaction{
     val tx = ledger.ledger.last{it.tx_id == tx_id}
     return tx
 }
@@ -102,6 +102,44 @@ class TransactionService () {
 
     fun transferCoins(sender_address: String, receiver_address: String, amount: Long): Boolean {
         // TODO: do!!
+
+        // for start, we search coins + build input list
+        val input_tx_id = mutableListOf<String>()
+        val input_address = mutableListOf<String>()
+        val sender_utxos : Set<String> = getUnspentTransactions(sender_address).keys
+        var coins : Long = 0
+        var enougCoins = false
+        for (utxo in sender_utxos){
+            val tx = getTxFromLedger(ledger,utxo)
+            val tempCoins = getCoinsFromTxOutput(tx,sender_address)
+            coins += tempCoins
+            input_tx_id.add(utxo)
+            input_address.add(sender_address)
+            if (coins >= amount){
+                enougCoins = true
+                break
+            }
+        }
+        if (!enougCoins){
+            println("NOT ENOUGH")
+            // TODO: return message to client
+            return false
+        }
+        val output_address = mutableListOf<String>(receiver_address)
+        val output_coins = mutableListOf<Long>(amount)
+        if (coins > amount){
+            output_address.add(sender_address)
+            output_coins.add(coins-amount)
+        }
+
+        // build a new tx
+        val tx = Transaction((sender_address + "->" + receiver_address),
+            input_tx_id,input_address,
+            output_address,output_coins)
+        createTransaction(tx)
+
+        return true
+
         /*val txs = transactionRepository.findAll()
         val utxo = clientUTxOsRepository.findById(sender_address)
         println(utxo)
@@ -115,11 +153,21 @@ class TransactionService () {
         }
         if (count >= amount)
             return true*/
-        return false
     }
 
-    fun getUnspentTransactions(address: String): Map<String?,Unit>{
+    fun getUnspentTransactions(address: String): Map<String,Unit>{
         return clients.addresses[address]!!.lst
+    }
+
+    fun getCoins(address: String) : Long{
+        val utxos = getUnspentTransactions(address).keys
+        var coins : Long = 0
+        for (utxo in utxos) {
+            val tx = getTxFromLedger(ledger,utxo)
+            val tempCoins = getCoinsFromTxOutput(tx,address)
+            coins += tempCoins
+        }
+        return coins
     }
 
     fun getTransactionHistory(address: Long): Int{

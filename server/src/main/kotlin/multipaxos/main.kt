@@ -6,7 +6,10 @@ import io.grpc.ManagedChannelBuilder
 import io.grpc.ServerBuilder
 import kotlinx.coroutines.*
 import org.apache.log4j.BasicConfigurator
+import org.apache.zookeeper.ZooKeeper
 import zookeeper.kotlin.ZooKeeperKt
+import zookeeper.kotlin.ZookeeperKtClient
+
 
 val biSerializer = object : ByteStringBiSerializer<String> {
     override fun serialize(obj: String) = obj.toByteStringUtf8()
@@ -26,8 +29,11 @@ suspend fun main(args: Array<String>) = coroutineScope {
     val learnerService = LearnerService(this)
     val acceptorService = AcceptorService(id)
 
+    BasicConfigurator.configure()
     //val zkSockets = (1..3).map { Pair("127.0.0.1", 2180 + it) }
     //val zkConnectionString = makeConnectionString(zkSockets)
+
+
 
     // TODO: Build gRPC server
     val server = ServerBuilder.forPort(id)
@@ -49,7 +55,9 @@ suspend fun main(args: Array<String>) = coroutineScope {
     val atomicBroadcast = object : AtomicBroadcast<String>(learnerService, biSerializer) {
         // These are dummy implementations
         // TODO: add real implementations
-        override suspend fun _send(byteString: ByteString) = throw NotImplementedError()
+        override suspend fun _send(byteString: ByteString){
+            val leader = learnerService.lastInstance
+        }
         override fun _deliver(byteString: ByteString) = listOf(biSerializer(byteString))
     }
 
@@ -75,6 +83,9 @@ suspend fun main(args: Array<String>) = coroutineScope {
     val omega = object : OmegaFailureDetector<ID> {
         override val leader: ID get() = id
         override fun addWatcher(observer: suspend () -> Unit) {
+            runBlocking {
+                observer.invoke()
+            }
         }
     }
 

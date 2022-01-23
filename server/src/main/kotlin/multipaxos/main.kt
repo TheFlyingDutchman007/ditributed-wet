@@ -5,10 +5,6 @@ import com.google.protobuf.kotlin.toByteStringUtf8
 import io.grpc.ManagedChannelBuilder
 import io.grpc.ServerBuilder
 import kotlinx.coroutines.*
-import org.apache.log4j.BasicConfigurator
-import org.apache.zookeeper.ZooKeeper
-import zookeeper.kotlin.ZooKeeperKt
-import zookeeper.kotlin.ZookeeperKtClient
 
 
 val biSerializer = object : ByteStringBiSerializer<String> {
@@ -17,7 +13,7 @@ val biSerializer = object : ByteStringBiSerializer<String> {
         .toStringUtf8()!!
 }
 
-suspend fun main(args: Array<String>) = coroutineScope {
+suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
 
     //println("start running")
     // Displays all debug messages from gRPC
@@ -29,24 +25,18 @@ suspend fun main(args: Array<String>) = coroutineScope {
     val learnerService = LearnerService(this)
     val acceptorService = AcceptorService(id)
 
-    BasicConfigurator.configure()
-    //val zkSockets = (1..3).map { Pair("127.0.0.1", 2180 + it) }
-    //val zkConnectionString = makeConnectionString(zkSockets)
-
-
-
     // TODO: Build gRPC server
     val server = ServerBuilder.forPort(id)
         .apply {
             if (id > 0) // Apply your own logic: who should be an acceptor
                 // TODO: addService(acceptorService)
-                //addService(acceptorService)
+                addService(acceptorService)
                 println(id)
         }
         .apply {
             if (id > 0) // Apply your own logic: who should be a learner
                 // TODO: addService(learnerService)
-                //addService(learnerService)
+                addService(learnerService)
                 println(id)
         }
         .build()
@@ -55,8 +45,9 @@ suspend fun main(args: Array<String>) = coroutineScope {
     val atomicBroadcast = object : AtomicBroadcast<String>(learnerService, biSerializer) {
         // These are dummy implementations
         // TODO: add real implementations
-        override suspend fun _send(byteString: ByteString){
-            val leader = learnerService.lastInstance
+        override suspend fun _send(byteString: ByteString) {
+            // here we send the data we want to multicast??
+            println("SENDING STUFF IS IMPORTANT")
         }
         override fun _deliver(byteString: ByteString) = listOf(biSerializer(byteString))
     }
@@ -83,9 +74,15 @@ suspend fun main(args: Array<String>) = coroutineScope {
     val omega = object : OmegaFailureDetector<ID> {
         override val leader: ID get() = id
         override fun addWatcher(observer: suspend () -> Unit) {
-            runBlocking {
+            /*coroutineScope {
+                val zkleader = LeaderElection.make(zk, "shard1")
+                zkleader.volunteer()
+                println("groot is " + id)
                 observer.invoke()
-            }
+                delay(20_000)
+                println("bye bye " + id)
+                zkleader.unlock()
+            }*/
         }
     }
 

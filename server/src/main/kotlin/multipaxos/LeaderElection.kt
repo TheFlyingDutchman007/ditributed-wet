@@ -13,7 +13,7 @@ fun main(args: Array<String>) = mainWith(args) { _, zk ->
     println("Waiting for the election")
     zkleader.volunteer()
     println("I Am groot")
-    delay(7_000)
+    delay(20_000)
     println("I Am not groot")
     zkleader.unlock()
 }

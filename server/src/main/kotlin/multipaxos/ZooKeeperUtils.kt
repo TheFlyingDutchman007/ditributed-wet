@@ -37,7 +37,7 @@ suspend fun withZooKeeper(
 typealias MainFunction =suspend CoroutineScope.(Array<String>, client: ZooKeeperKt) ->Unit
 
 fun mainWith(args:Array<String> = emptyArray(), the_main: MainFunction) = runBlocking {
-    BasicConfigurator.configure()
+    //BasicConfigurator.configure()
 
     val zkSockets = (1..3).map { Pair("127.0.0.1", 2180 + it) }
     val zkConnectionString = makeConnectionString(zkSockets)

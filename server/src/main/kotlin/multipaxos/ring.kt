@@ -1,6 +1,5 @@
 package multipaxos
 
-import antlr.Token
 import com.google.protobuf.ByteString
 import com.google.protobuf.kotlin.toByteStringUtf8
 import io.grpc.ManagedChannelBuilder
@@ -8,15 +7,24 @@ import io.grpc.ServerBuilder
 import kotlinx.coroutines.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import rest_api.controller.TransactionController
 import rest_api.repository.model.Transaction
+import rest_api.service.TransactionService
 
+
+/*private fun CoroutineScope.restAPI (controller: TransactionController){
+    runApplication<SpringBootBoilerplateApplication>()
+}*/
 
 suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
 
-    org.apache.log4j.BasicConfigurator.configure()
-
+    //org.apache.log4j.BasicConfigurator.configure()
 
     val id = args[0].toInt()
+
+    val service = TransactionService()
+    val controller = TransactionController(service)
+    //restAPI(controller)
 
     val learnerService = LearnerService(this)
     val acceptorService = AcceptorService(id)
@@ -52,7 +60,6 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
         server.start()
     }
 
-    // Create channels with clients
     val chans = listOf(8001, 8002, 8003).associateWith {
         ManagedChannelBuilder.forAddress("localhost", it).usePlaintext().build()!!
     }
@@ -76,13 +83,13 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
 
     proposer.start()
 
-    startRecievingMessages(atomicBroadcast, id, proposer, numOfShards)
+    startRecievingMessages(atomicBroadcast, id, proposer, numOfShards, service)
 
     // "Key press" barrier so only one propser sends messages
     withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
         System.`in`.read()
     }
-    startGeneratingMessages(id, proposer, token, numOfShards)
+    startGeneratingMessages(id, proposer, token, numOfShards, service)
     withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
         server.awaitTermination()
     }
@@ -92,7 +99,8 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
         id: Int,
         proposer: Proposer,
         token: Int,
-        num0fShards: Int
+        num0fShards: Int,
+        service: TransactionService
     ) {
         while (true){
             if ((id - 8000) % num0fShards == token % num0fShards)
@@ -100,17 +108,21 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
         }
         launch {
             println("Started Generating Messages")
-            /*(1..2).forEach {
-                delay(2000)
-                /*val tx = Transaction("test1", listOf("1"), listOf("1"), listOf("2","1"), listOf(20,80))
-                val json = Json.encodeToString(tx)
-                val str = json + "\n id = $id"
-                val prop = str.toByteStringUtf8()
-                    .also { println("Adding Proposal ${it.toStringUtf8()!!}")}*/
-                val prop = "[Value no $it from $id]".toByteStringUtf8()
-                    .also { println("Adding Proposal ${it.toStringUtf8()!!}") }
-                proposer.addProposal(prop)
+            /*while (true){
+                println(service.ledger)
+                delay(10000)
             }*/
+            (1..1).forEach {
+                val tx = Transaction(id.toLong(), listOf(1), listOf("1"), listOf("2","1"), listOf(20,80))
+                val json = Json.encodeToString(tx)
+                val str = "tx " + json + "\n id = $id"
+                val prop = str.toByteStringUtf8()
+                    .also { println("Adding Proposal ${it.toStringUtf8()!!}")}
+                /*val prop = "[Value no $it from $id]".toByteStringUtf8()
+                    .also { println("Adding Proposal ${it.toStringUtf8()!!}") }*/
+                proposer.addProposal(prop)
+                delay(20000)
+            }
 
             val tokenMsg = ("token " + token.toString()).toByteStringUtf8()
             proposer.addProposal(tokenMsg)
@@ -118,8 +130,9 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
     }
 
     // token message: "token x"
-    private fun CoroutineScope.startRecievingMessages(atomicBroadcast: AtomicBroadcast<String>, id: Int,
-                                                      proposer: Proposer, numOfShards: Int) {
+    private fun CoroutineScope.startRecievingMessages(
+        atomicBroadcast: AtomicBroadcast<String>, id: Int,
+        proposer: Proposer, numOfShards: Int, service: TransactionService) {
         launch {
             for ((`seq#`, msg) in atomicBroadcast.stream) {
                 println("Message: #$`seq#`: \n $msg \n  received!")
@@ -131,8 +144,10 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
                     // println(b)
                     if (a == b) {
                         println("Start because of token")
-                        startGeneratingMessages(id, proposer, token + 1, numOfShards)
+                        startGeneratingMessages(id, proposer, token + 1, numOfShards, service)
                     }
+                } else if (msg.split(" ")[0] == "tx"){
+
                 }
             }
         }

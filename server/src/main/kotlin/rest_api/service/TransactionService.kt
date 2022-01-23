@@ -6,11 +6,12 @@ import rest_api.repository.model.Transaction
 import rest_api.repository.model.TransactionsLedger
 import rest_api.repository.model.UTxOs
 import java.util.*
+import kotlin.math.pow
 import kotlin.reflect.typeOf
 const val initMoney : Long = 10000
 
 
-fun getTxFromLedger(ledger: TransactionsLedger, tx_id : String) : Transaction{
+fun getTxFromLedger(ledger: TransactionsLedger, tx_id : Long) : Transaction{
     val tx = ledger.ledger.last{it.tx_id == tx_id}
     return tx
 }
@@ -31,9 +32,9 @@ fun gen_clients(service: TransactionService ,ledger: TransactionsLedger){
         /*val genesisUTxOTxid  = service.getUnspentTransactions("0")["0->" +(i-1).toString()] // he got only 1 utxo (bank of money)
         println(service.getUnspentTransactions("0"))
         println(service.getUnspentTransactions("0")["0->" +(i-1).toString()])*/
-        val tx = getTxFromLedger(ledger,(i-1).toString())
+        val tx = getTxFromLedger(ledger,(i-1).toLong())
         val genesisMoney = getCoinsFromTxOutput(tx,"0")
-        val genTx = Transaction((i.toString()), listOf((i-1).toString()), listOf("0"),
+        val genTx = Transaction((i).toLong(), listOf((i-1).toLong()), listOf("0"),
             listOf(i.toString(),"0"), listOf(100, genesisMoney-100))
         service.createTransaction(genTx)
     }
@@ -44,23 +45,29 @@ fun gen_clients(service: TransactionService ,ledger: TransactionsLedger){
  * Service for interactions with employee domain object
  */
 @Service
-class TransactionService () {
+class TransactionService (private val shard: Int = 0) {
 
     // TODO: manage id of tx...
     // TODO: add limit for history (from the end back???)
 
     final var ledger: TransactionsLedger
     final var clients : Clients
+    final var txIds : MutableSet<Long> = mutableSetOf() // might be redundant
+    final var nextId: Long = (Long.MAX_VALUE / 3) * shard
     init {
         // init ledger
-        val init_transaction = Transaction("0", listOf("-1"),listOf("-1"),listOf("0"),listOf(initMoney))
-        this.ledger = TransactionsLedger(mutableListOf(init_transaction))
+        val init_transaction = Transaction(0, listOf(-1),listOf("-1"),listOf("0"),listOf(initMoney))
+        this.ledger = TransactionsLedger(mutableListOf(init_transaction), mutableSetOf(0))
 
         // init clients with genesis
-        val genesis_utxo = UTxOs("0",mutableMapOf(Pair("0",Unit)))
+        val genesis_utxo = UTxOs("0",mutableMapOf(Pair(0,Unit)))
         this.clients = Clients(mutableMapOf(Pair("0",genesis_utxo)))
 
         gen_clients(this,ledger)
+
+        // important because of generation of clients!!
+        if (nextId == 0.toLong())
+            nextId = 6
     }
 
 
@@ -88,14 +95,18 @@ class TransactionService () {
 
         }else{ // client is new!!
             // TODO: add client to clients - need to?????
-            val genTx = Transaction("-1", listOf("-1"), listOf("0"), listOf(sender_addr), listOf(100))
+            val genTx = Transaction(-1, listOf(-1), listOf("0"), listOf(sender_addr), listOf(100))
             ledger.ledger.add(genTx)
-            clients.addresses[sender_addr] = UTxOs(sender_addr, mutableMapOf(Pair("-1",Unit)))
+            clients.addresses[sender_addr] = UTxOs(sender_addr, mutableMapOf(Pair(-1,Unit)))
 
         }
 
         // update ledger
+        tx.tx_id = nextId
         ledger.ledger += tx
+        ledger.txMap.add(tx.tx_id)
+        txIds.add(nextId)
+        nextId++
 
         return true
     }
@@ -104,9 +115,9 @@ class TransactionService () {
     fun transferCoins(sender_address: String, receiver_address: String, amount: Long): Boolean {
 
         // for start, we search coins + build input list
-        val input_tx_id = mutableListOf<String>()
+        val input_tx_id = mutableListOf<Long>()
         val input_address = mutableListOf<String>()
-        val sender_utxos : Set<String> = getUnspentTransactions(sender_address).keys
+        val sender_utxos : Set<Long> = getUnspentTransactions(sender_address).keys
         var coins : Long = 0
         var enougCoins = false
         for (utxo in sender_utxos){
@@ -133,16 +144,22 @@ class TransactionService () {
         }
 
         // build a new tx
-        val tx = Transaction((sender_address + "->" + receiver_address),
+        // TODO: choose id
+        val tx = Transaction(nextId,
             input_tx_id,input_address,
             output_address,output_coins)
         createTransaction(tx)
+
+        txIds.add(nextId) // might be redundant
+        ledger.txMap.add(nextId)
+        nextId++
+
 
         return true
 
     }
 
-    fun getUnspentTransactions(address: String): Map<String,Unit>{
+    fun getUnspentTransactions(address: String): Map<Long,Unit>{
         return clients.addresses[address]!!.lst
     }
 
@@ -161,7 +178,7 @@ class TransactionService () {
 
 
     fun getTransactionHistory(address: String): TransactionsLedger{
-        val retLedger = TransactionsLedger(mutableListOf())
+        val retLedger = TransactionsLedger(mutableListOf(), mutableSetOf())
         for (tx in ledger.ledger.reversed()){
             if (tx.inputs_address[0] == address){
                 retLedger.ledger.add(0,tx)

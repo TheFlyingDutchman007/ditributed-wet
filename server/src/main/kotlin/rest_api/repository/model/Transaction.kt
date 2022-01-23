@@ -10,7 +10,7 @@ import java.util.*
 import javax.persistence.*
 
 
-typealias input_tx_id = List<String> // (TX-id, address) = UTxO
+typealias input_tx_id = List<Long> // (TX-id, address) = UTxO
 typealias input_address = List<String> // (TX-id, address) = UTxO
 typealias output_address = List<String> // (address, coins) = transfer
 typealias output_coins = List<Long> // (address, coins) = transfer
@@ -45,7 +45,7 @@ data class Transaction(
 @Serializable
 data class Transaction(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val tx_id: String, // long is only 64 bits - need 128
+    var tx_id: Long, // long is only 64 bits - need 128
 
     @ElementCollection
     val inputs_tx_id: input_tx_id,

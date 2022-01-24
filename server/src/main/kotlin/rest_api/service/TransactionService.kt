@@ -49,9 +49,54 @@ var nextId: Long = (Long.MAX_VALUE / numShards)
 var tx_stream : MutableList<Transaction> = mutableListOf()
 
 
-/**
- * Service for interactions with employee domain object
- */
+// call this function only after you checked that the tx_id does not exist!!
+fun createTransactionOut(tx: Transaction): Boolean {
+    var flag : Boolean = false
+    // if -1 then it's a new tx. else it's init or from other shard
+    if (tx.tx_id == (-1).toLong()) {
+        tx.tx_id = nextId
+        flag = true
+    }
+    val sender_addr = tx.inputs_address[0]  // get the sender of the tx
+    if (clients.addresses.containsKey(sender_addr)){ // sender already exists
+        // TODO: add checks for valid utxo -> choose utxos to work with - need to?????
+
+        // check input utxo's from sender existence
+        for ((i,tx_id) in tx.inputs_tx_id.withIndex()){
+            clients.addresses[sender_addr]!!.lst.get(tx.inputs_tx_id[i]) ?: return false
+        }
+        // erase input utxo's from sender
+        for ((i,tx_id) in tx.inputs_tx_id.withIndex()){
+            clients.addresses[sender_addr]!!.lst.remove(tx.inputs_tx_id[i])
+        }
+
+        // create output utxo's for receivers and send to the servers
+        for (recv_addr in tx.outputs_address){
+            // remember that we assume that the client exists
+            clients.addresses[recv_addr]!!.lst[tx.tx_id] = Unit
+        }
+
+    }else{ // client is new!!
+        // TODO: add client to clients - need to?????
+        val genTx = Transaction(-1, listOf(-1), listOf("0"), listOf(sender_addr), listOf(100))
+        ledger.ledger.add(genTx)
+        clients.addresses[sender_addr] = UTxOs(sender_addr, mutableMapOf(Pair(-1,Unit)))
+
+    }
+
+    ledger.ledger += tx
+    tx_stream += tx // add tx to buffer
+    ledger.txMap.add(tx.tx_id)
+    txIds.add(tx.tx_id)
+
+    if (flag)
+        nextId++
+
+    return true
+
+}
+
+
 @Service
 class TransactionService (private val shard: Int = 0) {
 
@@ -86,45 +131,7 @@ class TransactionService (private val shard: Int = 0) {
      * @return status (TRUEEEEEEEE)
      */
     fun createTransaction(tx: Transaction): Boolean {
-        if (tx.tx_id > 5) {
-            tx.tx_id = nextId
-        }
-        val sender_addr = tx.inputs_address[0]  // get the sender of the tx
-        if (clients.addresses.containsKey(sender_addr)){ // sender already exists
-            // TODO: add checks for valid utxo -> choose utxos to work with - need to?????
-
-            // erase input utxo's from sender
-            for ((i,tx_id) in tx.inputs_tx_id.withIndex()){
-                clients.addresses[sender_addr]!!.lst.get(tx.inputs_tx_id[i]) ?: return false
-            }
-
-            for ((i,tx_id) in tx.inputs_tx_id.withIndex()){
-                clients.addresses[sender_addr]!!.lst.remove(tx.inputs_tx_id[i])
-            }
-
-            // create output utxo's for receivers and send to the servers
-            for (recv_addr in tx.outputs_address){
-                // remember that we assume that the client exists
-                clients.addresses[recv_addr]!!.lst[tx.tx_id] = Unit
-            }
-
-        }else{ // client is new!!
-            // TODO: add client to clients - need to?????
-            val genTx = Transaction(-1, listOf(-1), listOf("0"), listOf(sender_addr), listOf(100))
-            ledger.ledger.add(genTx)
-            clients.addresses[sender_addr] = UTxOs(sender_addr, mutableMapOf(Pair(-1,Unit)))
-
-        }
-
-        ledger.ledger += tx
-        tx_stream += tx // add tx to buffer
-        ledger.txMap.add(tx.tx_id)
-        txIds.add(tx.tx_id)
-
-        if (tx.tx_id > 5)
-            nextId++
-
-        return true
+        return createTransactionOut(tx)
 
     }
 
@@ -219,10 +226,4 @@ class TransactionService (private val shard: Int = 0) {
         return tx_stream
     }
 
-    fun addOtherShardTx(tx : Transaction){
-        if (!ledger.txMap.contains(tx.tx_id)){
-            ledger.ledger += tx
-            ledger.txMap.add(tx.tx_id)
-        }
-    }
 }

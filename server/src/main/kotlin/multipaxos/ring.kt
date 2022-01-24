@@ -11,6 +11,7 @@ import kotlinx.serialization.json.Json
 import rest_api.controller.TransactionController
 import rest_api.repository.model.Transaction
 import rest_api.service.TransactionService
+import rest_api.service.createTransactionOut
 import rest_api.service.ledger
 import rest_api.service.tx_stream
 
@@ -59,11 +60,18 @@ private fun parseToTx(msg: String) : Transaction{
     return tx
 }
 
+fun addOtherShardTx(tx : Transaction){
+    if (!ledger.txMap.contains(tx.tx_id)){ // check that the tx is not already exists
+        val result = createTransactionOut(tx)
+        println(result)
+    }
+}
+
 /*private fun CoroutineScope.restAPI (controller: TransactionController){
     runApplication<SpringBootBoilerplateApplication>()
 }*/
 
-suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
+fun main(args: Array<String>) = mainWith(args) {_, zk ->
 
     //org.apache.log4j.BasicConfigurator.configure()
 
@@ -175,7 +183,7 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
                 val prop = str.toByteStringUtf8()
                 proposer.addProposal(prop)
             }
-            //service.tx_stream.clear()
+            tx_stream.clear()
             val tokenMsg = ("token " + token.toString()).toByteStringUtf8()
             proposer.addProposal(tokenMsg)
         }
@@ -200,7 +208,8 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
                     }
                 } else if (msg.split("\n")[0] == "tx"){
                     val tx = parseToTx(msg)
-                    println(tx)
+                    //println(tx)
+                    addOtherShardTx(tx)
                 }
             }
         }

@@ -6,9 +6,11 @@ import rest_api.repository.model.Transaction
 import rest_api.repository.model.TransactionsLedger
 import rest_api.repository.model.UTxOs
 import java.util.*
+import java.util.stream.Stream
 import kotlin.math.pow
 import kotlin.reflect.typeOf
 const val initMoney : Long = 10000
+const val numShards : Int = 3
 
 
 fun getTxFromLedger(ledger: TransactionsLedger, tx_id : Long) : Transaction{
@@ -28,7 +30,7 @@ fun getCoinsFromTxOutput(tx : Transaction, address: String) : Long{
 
 fun gen_clients(service: TransactionService ,ledger: TransactionsLedger){
     for (i in 1..5){
-        service.clients.addresses[i.toString()] = UTxOs(i.toString(), mutableMapOf())
+        clients.addresses[i.toString()] = UTxOs(i.toString(), mutableMapOf())
         /*val genesisUTxOTxid  = service.getUnspentTransactions("0")["0->" +(i-1).toString()] // he got only 1 utxo (bank of money)
         println(service.getUnspentTransactions("0"))
         println(service.getUnspentTransactions("0")["0->" +(i-1).toString()])*/
@@ -40,6 +42,12 @@ fun gen_clients(service: TransactionService ,ledger: TransactionsLedger){
     }
 }
 
+var ledger: TransactionsLedger = TransactionsLedger(mutableListOf(), mutableSetOf())
+var clients : Clients = Clients(mutableMapOf())
+var txIds : MutableSet<Long> = mutableSetOf() // might be redundant
+var nextId: Long = (Long.MAX_VALUE / numShards)
+var tx_stream : MutableList<Transaction> = mutableListOf()
+
 
 /**
  * Service for interactions with employee domain object
@@ -50,24 +58,24 @@ class TransactionService (private val shard: Int = 0) {
     // TODO: manage id of tx...
     // TODO: add limit for history (from the end back???)
 
-    final var ledger: TransactionsLedger
-    final var clients : Clients
-    final var txIds : MutableSet<Long> = mutableSetOf() // might be redundant
-    final var nextId: Long = (Long.MAX_VALUE / 3) * shard
     init {
         // init ledger
         val init_transaction = Transaction(0, listOf(-1),listOf("-1"),listOf("0"),listOf(initMoney))
-        this.ledger = TransactionsLedger(mutableListOf(init_transaction), mutableSetOf(0))
+        ledger = TransactionsLedger(mutableListOf(init_transaction), mutableSetOf(0))
 
         // init clients with genesis
         val genesis_utxo = UTxOs("0",mutableMapOf(Pair(0,Unit)))
-        this.clients = Clients(mutableMapOf(Pair("0",genesis_utxo)))
+        clients = Clients(mutableMapOf(Pair("0",genesis_utxo)))
 
         gen_clients(this,ledger)
 
+
+        println(nextId)
         // important because of generation of clients!!
-        if (nextId == 0.toLong())
+        if (nextId == 0.toLong()) {
+            println("nextID from 0 to 6")
             nextId = 6
+        }
     }
 
 
@@ -78,15 +86,22 @@ class TransactionService (private val shard: Int = 0) {
      * @return status (TRUEEEEEEEE)
      */
     fun createTransaction(tx: Transaction): Boolean {
-
+        if (tx.tx_id > 5) {
+            tx.tx_id = nextId
+        }
         val sender_addr = tx.inputs_address[0]  // get the sender of the tx
         if (clients.addresses.containsKey(sender_addr)){ // sender already exists
             // TODO: add checks for valid utxo -> choose utxos to work with - need to?????
 
             // erase input utxo's from sender
             for ((i,tx_id) in tx.inputs_tx_id.withIndex()){
+                clients.addresses[sender_addr]!!.lst.get(tx.inputs_tx_id[i]) ?: return false
+            }
+
+            for ((i,tx_id) in tx.inputs_tx_id.withIndex()){
                 clients.addresses[sender_addr]!!.lst.remove(tx.inputs_tx_id[i])
             }
+
             // create output utxo's for receivers and send to the servers
             for (recv_addr in tx.outputs_address){
                 // remember that we assume that the client exists
@@ -101,14 +116,16 @@ class TransactionService (private val shard: Int = 0) {
 
         }
 
-        // update ledger
-        tx.tx_id = nextId
         ledger.ledger += tx
+        tx_stream += tx // add tx to buffer
         ledger.txMap.add(tx.tx_id)
-        txIds.add(nextId)
-        nextId++
+        txIds.add(tx.tx_id)
+
+        if (tx.tx_id > 5)
+            nextId++
 
         return true
+
     }
 
 
@@ -198,4 +215,7 @@ class TransactionService (private val shard: Int = 0) {
         return ledger
     }
 
+    fun getStream() : List<Transaction>{
+        return tx_stream
+    }
 }

@@ -10,6 +10,8 @@ import kotlinx.serialization.json.Json
 import rest_api.controller.TransactionController
 import rest_api.repository.model.Transaction
 import rest_api.service.TransactionService
+import rest_api.service.ledger
+import rest_api.service.tx_stream
 
 
 /*private fun CoroutineScope.restAPI (controller: TransactionController){
@@ -22,8 +24,6 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
 
     val id = args[0].toInt()
 
-    val service = TransactionService()
-    val controller = TransactionController(service)
     //restAPI(controller)
 
     val learnerService = LearnerService(this)
@@ -83,13 +83,13 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
 
     proposer.start()
 
-    startRecievingMessages(atomicBroadcast, id, proposer, numOfShards, service)
+    startRecievingMessages(atomicBroadcast, id, proposer, numOfShards)
 
     // "Key press" barrier so only one propser sends messages
     withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
         System.`in`.read()
     }
-    startGeneratingMessages(id, proposer, token, numOfShards, service)
+    startGeneratingMessages(id, proposer, token, numOfShards)
     withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
         server.awaitTermination()
     }
@@ -99,8 +99,7 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
         id: Int,
         proposer: Proposer,
         token: Int,
-        num0fShards: Int,
-        service: TransactionService
+        num0fShards: Int
     ) {
         while (true){
             if ((id - 8000) % num0fShards == token % num0fShards)
@@ -112,18 +111,23 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
                 println(service.ledger)
                 delay(10000)
             }*/
-            (1..1).forEach {
+            /*(1..1).forEach {
                 val tx = Transaction(id.toLong(), listOf(1), listOf("1"), listOf("2","1"), listOf(20,80))
                 val json = Json.encodeToString(tx)
-                val str = "tx " + json + "\n id = $id"
+                val str = "tx\n" + json + "\n id = $id"
                 val prop = str.toByteStringUtf8()
                     .also { println("Adding Proposal ${it.toStringUtf8()!!}")}
                 /*val prop = "[Value no $it from $id]".toByteStringUtf8()
                     .also { println("Adding Proposal ${it.toStringUtf8()!!}") }*/
                 proposer.addProposal(prop)
                 delay(20000)
+            }*/
+            delay(5000)
+            val stream = tx_stream
+            for (tx in stream){
+                println(tx)
             }
-
+            //service.tx_stream.clear()
             val tokenMsg = ("token " + token.toString()).toByteStringUtf8()
             proposer.addProposal(tokenMsg)
         }
@@ -132,7 +136,7 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
     // token message: "token x"
     private fun CoroutineScope.startRecievingMessages(
         atomicBroadcast: AtomicBroadcast<String>, id: Int,
-        proposer: Proposer, numOfShards: Int, service: TransactionService) {
+        proposer: Proposer, numOfShards: Int) {
         launch {
             for ((`seq#`, msg) in atomicBroadcast.stream) {
                 println("Message: #$`seq#`: \n $msg \n  received!")
@@ -144,10 +148,11 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
                     // println(b)
                     if (a == b) {
                         println("Start because of token")
-                        startGeneratingMessages(id, proposer, token + 1, numOfShards, service)
+                        startGeneratingMessages(id, proposer, token + 1, numOfShards)
                     }
-                } else if (msg.split(" ")[0] == "tx"){
-
+                } else if (msg.split("\n")[0] == "tx"){
+                    println(msg.split("\n")[1])
+                    //val tx : String = msg.split("\n")[1].split(" ")[1]
                 }
             }
         }

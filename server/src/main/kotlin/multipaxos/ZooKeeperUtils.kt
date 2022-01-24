@@ -10,9 +10,13 @@ import org.springframework.boot.SpringApplication
 import org.springframework.boot.runApplication
 import rest_api.SpringBootBoilerplateApplication
 import rest_api.rest_api_Test
+import rest_api.service.nextId
 import zookeeper.kotlin.ZooKeeperKt
 import zookeeper.kotlin.ZookeeperKtClient
 import java.util.*
+
+
+const val numShards : Int = 3
 
 fun makeConnectionString(sockets: List<Pair<String, Int>>) =
     sockets.joinToString(separator = ",") { (hostname, port) ->
@@ -53,6 +57,7 @@ fun mainWith(args:Array<String> = emptyArray(), the_main: MainFunction) = runBlo
     val id = args[0]
     val restPort = id.toInt() + 100
     System.setProperty("server.port", restPort.toString())
+    nextId *= (id.toInt() % numShards)
     runApplication<SpringBootBoilerplateApplication>(*args)
     withZooKeeper(zkConnectionString) {
         the_main(args, it)

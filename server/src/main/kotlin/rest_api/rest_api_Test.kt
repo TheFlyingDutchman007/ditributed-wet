@@ -14,7 +14,7 @@ class rest_api_Test{
     @Test
     fun basicTransactionTest(){
 
-        val tx = Transaction("test1", listOf("1"), listOf("1"), listOf("2","1"), listOf(20,80))
+        val tx = Transaction(1234, listOf(1), listOf("1"), listOf("2","1"), listOf(20,80))
         val json = Json.encodeToString(tx)
 
         val client = HttpClient.newBuilder().build()

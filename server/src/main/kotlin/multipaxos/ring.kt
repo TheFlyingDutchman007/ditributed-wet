@@ -2,6 +2,7 @@ package multipaxos
 
 import com.google.protobuf.ByteString
 import com.google.protobuf.kotlin.toByteStringUtf8
+import com.google.protobuf.type
 import io.grpc.ManagedChannelBuilder
 import io.grpc.ServerBuilder
 import kotlinx.coroutines.*
@@ -13,6 +14,50 @@ import rest_api.service.TransactionService
 import rest_api.service.ledger
 import rest_api.service.tx_stream
 
+
+private fun parseToTx(msg: String) : Transaction{
+    var de = biSerializer.deserialize(msg.split("\n")[1].toByteStringUtf8())
+    de = de.replace("\",\"","\"-\"")
+    val reg = "[0-9],[0-9]".toRegex()
+    var found = reg.find(de)
+    while(found != null){
+        de = de.replace(found.value,found.value[0]+"$"+found.value[2])
+        found = found.next()
+    }
+    val json = de.split(",")
+
+    val txID = json[0].split(":")[1].toLong()
+
+    var inputTxIdStr = json[1].split(":")[1]
+    inputTxIdStr = inputTxIdStr.substring(1,inputTxIdStr.length-1)
+    var inputAddrStr = json[2].split(":")[1]
+    inputAddrStr = inputAddrStr.substring(1,inputAddrStr.length-1)
+    val inputTxId = mutableListOf<Long>()
+    for (txId in inputTxIdStr.split("$")){
+        inputTxId.add(txId.toLong())
+    }
+    val inputAddr = mutableListOf<String>()
+    for (addr in inputAddrStr.split("-")){
+        inputAddr.add(addr.substring(1,addr.length-1))
+    }
+
+    var outputAddrStr = json[3].split(":")[1]
+    outputAddrStr = outputAddrStr.substring(1,outputAddrStr.length-1)
+    val outputAddr = mutableListOf<String>()
+    for (addr in outputAddrStr.split("-")){
+        outputAddr.add(addr.substring(1,addr.length-1))
+    }
+
+    var outputCoinsStr = json[4].split(":")[1]
+    outputCoinsStr = outputCoinsStr.substring(1, outputCoinsStr.length-2)
+    val outputCoins = mutableListOf<Long>()
+    for (coins in outputCoinsStr.split("$")){
+        outputCoins.add(coins.toLong())
+    }
+
+    val tx = Transaction(txID,inputTxId,inputAddr,outputAddr,outputCoins)
+    return tx
+}
 
 /*private fun CoroutineScope.restAPI (controller: TransactionController){
     runApplication<SpringBootBoilerplateApplication>()
@@ -125,7 +170,10 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
             delay(5000)
             val stream = tx_stream
             for (tx in stream){
-                println(tx)
+                val json = Json.encodeToString(tx)
+                val str = "tx\n" + json + "\n id = $id"
+                val prop = str.toByteStringUtf8()
+                proposer.addProposal(prop)
             }
             //service.tx_stream.clear()
             val tokenMsg = ("token " + token.toString()).toByteStringUtf8()
@@ -151,8 +199,8 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
                         startGeneratingMessages(id, proposer, token + 1, numOfShards)
                     }
                 } else if (msg.split("\n")[0] == "tx"){
-                    println(msg.split("\n")[1])
-                    //val tx : String = msg.split("\n")[1].split(" ")[1]
+                    val tx = parseToTx(msg)
+                    println(tx)
                 }
             }
         }

@@ -55,7 +55,6 @@ var tx_stream : MutableList<Transaction> = mutableListOf()
 @Service
 class TransactionService (private val shard: Int = 0) {
 
-    // TODO: manage id of tx...
     // TODO: add limit for history (from the end back???)
 
     init {
@@ -68,6 +67,7 @@ class TransactionService (private val shard: Int = 0) {
         clients = Clients(mutableMapOf(Pair("0",genesis_utxo)))
 
         gen_clients(this,ledger)
+        tx_stream.clear()
 
 
         println(nextId)
@@ -217,5 +217,12 @@ class TransactionService (private val shard: Int = 0) {
 
     fun getStream() : List<Transaction>{
         return tx_stream
+    }
+
+    fun addOtherShardTx(tx : Transaction){
+        if (!ledger.txMap.contains(tx.tx_id)){
+            ledger.ledger += tx
+            ledger.txMap.add(tx.tx_id)
+        }
     }
 }

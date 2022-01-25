@@ -169,14 +169,14 @@ class TransactionService (private val shard: Int = 0) {
 
         // build a new tx
         // TODO: choose id
-        val tx = Transaction(nextId,
+        val tx = Transaction(-1,
             input_tx_id,input_address,
             output_address,output_coins)
         createTransaction(tx)
 
-        txIds.add(nextId) // might be redundant
+        /*txIds.add(nextId) // might be redundant
         ledger.txMap.add(nextId)
-        nextId++
+        nextId++*/
 
 
         return true

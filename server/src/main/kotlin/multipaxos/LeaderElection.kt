@@ -43,7 +43,6 @@ class LeaderElection private constructor(private val zk: ZooKeeperKt, val electi
         }.first.let { ZKPaths.extractSequentialSuffix(it)!! }
         val seqNo = mySeqNo!!
 
-        // need???
         val leaderWait: Channel<Unit> = Channel(1)
         while (true) {
             // get all nodes
@@ -72,6 +71,14 @@ class LeaderElection private constructor(private val zk: ZooKeeperKt, val electi
 
     suspend fun unlock() {
         zk.delete("/guid-${mySeqNo}")
+    }
+
+    suspend fun getLeader() : String{
+        val seqNos = zk.getChildren("/").first
+            .map { Pair(ZKPaths.extractSequentialSuffix(it)!!, it.substring(5,it.length-11)) }
+            .sortedBy { ZKPaths.extractSequentialSuffix(it.first)!! }
+        println(seqNos[0].second)
+        return seqNos[0].first
     }
 
 }

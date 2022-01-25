@@ -2,20 +2,18 @@ package multipaxos
 
 import com.google.protobuf.ByteString
 import com.google.protobuf.kotlin.toByteStringUtf8
-import com.google.protobuf.type
 import io.grpc.ManagedChannel
 import io.grpc.ManagedChannelBuilder
 import io.grpc.ServerBuilder
 import kotlinx.coroutines.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import rest_api.controller.TransactionController
 import rest_api.repository.model.Transaction
-import rest_api.service.TransactionService
-import rest_api.service.createTransactionOut
-import rest_api.service.ledger
-import rest_api.service.tx_stream
+import rest_api.service.*
 import zookeeper.kotlin.ZooKeeperKt
+
+var id : Int = 0
+var currLeader : MutableList<Int> = mutableListOf(id)
 
 
 private fun parseToTx(msg: String) : Transaction{
@@ -76,15 +74,11 @@ private fun addMyLeaderTx(tx : Transaction){
 
 suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
 
-    //org.apache.log4j.BasicConfigurator.configure()
 
-    val id = args[0].toInt()
-    // TODO: make shard by id
-    var currLeader : MutableList<Int> = mutableListOf(id)
-    val zkLeader = LeaderElection.make(zk, "shard1")
-
-
-    //restAPI(controller)
+    id = args[0].toInt()
+    currLeader = mutableListOf(id)
+    val shard = "shard" + (id % numShards).toString()
+    val zkLeader = LeaderElection.make(zk, shard)
 
     val learnerService = LearnerService(this)
     val acceptorService = AcceptorService(id)
@@ -102,11 +96,9 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
         }
         .build()
 
-
     // Use the atomic broadcast adapter to use the learner service as an atomic broadcast service
     val atomicBroadcast = object : AtomicBroadcast<String>(learnerService, biSerializer) {
         // These are dummy implementations
-        // TODO: add real implementations
         override suspend fun _send(byteString: ByteString) {
             //println("SENDING STUFF IS IMPORTANT")
         }
@@ -116,8 +108,8 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
     withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
         server.start()
     }
-
-    val chans = listOf(8001, 8004, 8007).associateWith {
+    val shardChans = getShardIDs(id)
+    val chans = shardChans.associateWith {
         ManagedChannelBuilder.forAddress("localhost", it).usePlaintext().build()!!
     }
 
@@ -126,10 +118,7 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
     val omega = object : OmegaFailureDetector<ID> {
         override val leader: ID get() = id
         //override val leader: ID get() = 8001
-        override fun addWatcher(observer: suspend () -> Unit) {
-            // TODO: replace the fallen leader in my shard
-            println("watcher is shit")
-        }
+        override fun addWatcher(observer: suspend () -> Unit) {}
     }
 
     // Create a proposer, note that the proposers id's and
@@ -141,7 +130,7 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
 
     proposer.start()
 
-    startRecievingMessages(atomicBroadcast, zkLeader, id, currLeader, chans, proposer)
+    startRecievingMessages(atomicBroadcast)
 
     // "Key press" barrier so only one propser sends messages
     withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
@@ -149,11 +138,87 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
     }
     //println(omega.leader)
     zkLeader.volunteer()
-    // TODO: send a leader message to everyone in the shard
     sendLeaderMsg(id,proposer)
     startGeneratingMessages(id, proposer)
     withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
         server.awaitTermination()
+    }
+}
+
+suspend fun shardProcess(id: Int, zk: ZooKeeperKt) {
+    coroutineScope {
+        var currLeader: MutableList<Int> = mutableListOf(id)
+        val shard = "shard" + (id % numShards).toString()
+        val zkLeader = LeaderElection.make(zk, shard)
+        val learnerService = LearnerService(this)
+        val acceptorService = AcceptorService(id)
+        val server = ServerBuilder.forPort(id)
+            .apply {
+                if (id > 0) // Apply your own logic: who should be an acceptor
+                    addService(acceptorService)
+                println(id)
+            }
+            .apply {
+                if (id > 0) // Apply your own logic: who should be a learner
+                    addService(learnerService)
+                println(id)
+            }
+            .build()
+        val atomicBroadcast = object : AtomicBroadcast<String>(learnerService, biSerializer) {
+            // These are dummy implementations
+            override suspend fun _send(byteString: ByteString) {
+                //println("SENDING STUFF IS IMPORTANT")
+            }
+
+            override fun _deliver(byteString: ByteString) = listOf(this.biSerializer(byteString))
+        }
+        /*withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
+            server.start()
+        }*/
+        server.start()
+        val shardChans = getShardIDs(id)
+        val chans = shardChans.associateWith {
+            ManagedChannelBuilder.forAddress("localhost", it).usePlaintext().build()!!
+        }
+        learnerService.learnerChannels = chans.filterKeys { it != id }.values.toList()
+        val omega = object : OmegaFailureDetector<ID> {
+            override val leader: ID get() = id
+
+            //override val leader: ID get() = 8001
+            override fun addWatcher(observer: suspend () -> Unit) {}
+        }
+        val proposer = Proposer(
+            id = id, omegaFD = omega, scope = this, acceptors = chans,
+            thisLearner = learnerService,
+        )
+        proposer.start()
+        startRecievingMessages(atomicBroadcast)
+        /*withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
+            System.`in`.read()
+        }*/
+        zkLeader.volunteer()
+        //delay(60000)
+        sendLeaderMsg(id, proposer)
+        startGeneratingMessages(id, proposer)
+        /*withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
+            server.awaitTermination()
+        }*/
+    }
+}
+
+suspend fun shardProcessNew(
+    atomicBroadcast: AtomicBroadcast<String>, currLeader: MutableList<Int>, zkLeader : LeaderElection,
+    id: Int, proposer: Proposer
+    ){
+    coroutineScope {
+        startRecievingMessages(atomicBroadcast)
+        withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
+            System.`in`.read()
+        }
+        zkLeader.volunteer()
+        //delay(60000)
+        sendLeaderMsg(id, proposer)
+        startGeneratingMessages(id, proposer)
     }
 }
 
@@ -165,24 +230,19 @@ private fun CoroutineScope.startGeneratingMessages(
         println("Started Generating Messages")
         while(true){
             delay(2000)
-            for (tx in tx_stream){
+            for (tx in tx_stream_leader){
                 val json = Json.encodeToString(tx)
                 val str = "tx\n" + json + "\n id = $id"
                 val prop = str.toByteStringUtf8()
                 proposer.addProposal(prop)
             }
-            tx_stream.clear()
+            tx_stream_leader.clear()
         }
     }
 }
 
 private fun CoroutineScope.startRecievingMessages(
     atomicBroadcast: AtomicBroadcast<String>,
-    zkLeader : LeaderElection,
-    id : Int,
-    currLeader : MutableList<Int>,
-    chans: Map<Int, ManagedChannel>,
-    proposer: Proposer
 ) {
     launch {
         for ((`seq#`, msg) in atomicBroadcast.stream) {

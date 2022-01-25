@@ -1,10 +1,18 @@
 package rest_api.service
 
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import multipaxos.currLeader
+import multipaxos.id
 import org.springframework.stereotype.Service
 import rest_api.repository.model.Clients
 import rest_api.repository.model.Transaction
 import rest_api.repository.model.TransactionsLedger
 import rest_api.repository.model.UTxOs
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.util.*
 import java.util.stream.Stream
 import kotlin.math.pow
@@ -46,11 +54,30 @@ var ledger: TransactionsLedger = TransactionsLedger(mutableListOf(), mutableSetO
 var clients : Clients = Clients(mutableMapOf())
 var txIds : MutableSet<Long> = mutableSetOf() // might be redundant
 var nextId: Long = (Long.MAX_VALUE / numShards)
-var tx_stream : MutableList<Transaction> = mutableListOf()
+var tx_stream_leader : MutableList<Transaction> = mutableListOf()
+var tx_stream_token : MutableList<Transaction> = mutableListOf()
 
 
 // call this function only after you checked that the tx_id does not exist!!
 fun createTransactionOut(tx: Transaction): Boolean {
+    if (id != currLeader[0] && tx.tx_id == (-1).toLong()){
+        println("got the tx but I am not the leader!!")
+        println(currLeader[0])
+        println(id)
+        val leader = (currLeader[0]+ 100)
+        println("http://localhost:$leader/submit_transaction")
+        val json = Json.encodeToString(tx)
+
+        val client = HttpClient.newBuilder().build()
+        val request = HttpRequest.newBuilder()
+            .uri(URI.create("http://localhost:$leader/submit_transaction"))
+            .POST(HttpRequest.BodyPublishers.ofString(json))
+            .setHeader("Content-Type","application/json")
+            .build()
+        val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+        return response.body() == "true"
+        //return true
+    }
     var flag : Boolean = false
     // if -1 then it's a new tx. else it's init or from other shard
     if (tx.tx_id == (-1).toLong()) {
@@ -85,7 +112,8 @@ fun createTransactionOut(tx: Transaction): Boolean {
     }
 
     ledger.ledger += tx
-    tx_stream += tx // add tx to buffer
+    tx_stream_leader += tx // add tx to buffer
+    tx_stream_token += tx // add tx to buffer
     ledger.txMap.add(tx.tx_id)
     txIds.add(tx.tx_id)
 
@@ -112,7 +140,8 @@ class TransactionService (private val shard: Int = 0) {
         clients = Clients(mutableMapOf(Pair("0",genesis_utxo)))
 
         gen_clients(this,ledger)
-        tx_stream.clear()
+        tx_stream_leader.clear()
+        tx_stream_token.clear()
 
 
         println(nextId)
@@ -172,14 +201,11 @@ class TransactionService (private val shard: Int = 0) {
         val tx = Transaction(-1,
             input_tx_id,input_address,
             output_address,output_coins)
-        createTransaction(tx)
+        return createTransaction(tx)
 
         /*txIds.add(nextId) // might be redundant
         ledger.txMap.add(nextId)
         nextId++*/
-
-
-        return true
 
     }
 
@@ -223,7 +249,7 @@ class TransactionService (private val shard: Int = 0) {
     }
 
     fun getStream() : List<Transaction>{
-        return tx_stream
+        return tx_stream_leader
     }
 
 }

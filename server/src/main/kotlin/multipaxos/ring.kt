@@ -147,21 +147,16 @@ fun main(args: Array<String>) = mainWith(args) {_, zk ->
 
 suspend fun ringProcess(zk : ZooKeeperKt) {
     coroutineScope {
-        withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
-            System.`in`.read()
-        }
-        val zkRinger = TokenKeeperLeader.make(zk,id)
-        zkRinger.lead()
 
         val learnerService = LearnerService(this)
-        var ringId = 0
-        if (id == 8001 || id == 8004){
+        var ringId = id + 9
+        /*if (id == 8001 || id == 8004){
             ringId = 8010
         }else if (id == 8002 || id == 8005) {
             ringId = 8011
         }else if (id == 8003 || id == 8006){
             ringId = 8012
-        }
+        }*/
         println(ringId)
         val acceptorService = AcceptorService(ringId)
 
@@ -197,7 +192,13 @@ suspend fun ringProcess(zk : ZooKeeperKt) {
             server.start()
         }
 
-        val chans = listOf(8010, 8011, 8012).associateWith {
+        withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
+            System.`in`.read()
+        }
+        val zkRinger = TokenKeeperLeader.make(zk,id)
+        zkRinger.lead()
+
+        val chans = listOf(8010, 8011, 8012, 8013, 8014, 8015).associateWith {
             ManagedChannelBuilder.forAddress("localhost", it).usePlaintext().build()!!
         }
 
@@ -262,10 +263,6 @@ private fun CoroutineScope.startGeneratingMessages(
         num0fShards: Int,
         zk: ZooKeeperKt,
     ) {
-        /*while (true){
-            if ((id - 8000) % num0fShards == token % num0fShards)
-                break
-        }*/
         launch {
             val stayAlive = TokenKeeperLiveliness.make(zk)
             while(true) {

@@ -145,13 +145,15 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
     }
 }
 
-suspend fun shardProcess(id: Int, zk: ZooKeeperKt) {
+suspend fun shardProcess(zk: ZooKeeperKt) {
     coroutineScope {
-        var currLeader: MutableList<Int> = mutableListOf(id)
+        currLeader = mutableListOf(id)
         val shard = "shard" + (id % numShards).toString()
         val zkLeader = LeaderElection.make(zk, shard)
+
         val learnerService = LearnerService(this)
         val acceptorService = AcceptorService(id)
+
         val server = ServerBuilder.forPort(id)
             .apply {
                 if (id > 0) // Apply your own logic: who should be an acceptor
@@ -164,45 +166,55 @@ suspend fun shardProcess(id: Int, zk: ZooKeeperKt) {
                 println(id)
             }
             .build()
+
+        // Use the atomic broadcast adapter to use the learner service as an atomic broadcast service
         val atomicBroadcast = object : AtomicBroadcast<String>(learnerService, biSerializer) {
             // These are dummy implementations
             override suspend fun _send(byteString: ByteString) {
                 //println("SENDING STUFF IS IMPORTANT")
             }
-
-            override fun _deliver(byteString: ByteString) = listOf(this.biSerializer(byteString))
+            override fun _deliver(byteString: ByteString) = listOf(biSerializer(byteString))
         }
-        /*withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
+
+        withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
             server.start()
-        }*/
-        server.start()
+        }
         val shardChans = getShardIDs(id)
         val chans = shardChans.associateWith {
             ManagedChannelBuilder.forAddress("localhost", it).usePlaintext().build()!!
         }
+
         learnerService.learnerChannels = chans.filterKeys { it != id }.values.toList()
+
         val omega = object : OmegaFailureDetector<ID> {
             override val leader: ID get() = id
-
             //override val leader: ID get() = 8001
             override fun addWatcher(observer: suspend () -> Unit) {}
         }
+
+        // Create a proposer, note that the proposers id's and
+        // the acceptors id's must be all unique (they break symmetry)
         val proposer = Proposer(
             id = id, omegaFD = omega, scope = this, acceptors = chans,
             thisLearner = learnerService,
         )
+
         proposer.start()
+
         startRecievingMessages(atomicBroadcast)
+
+        // "Key press" barrier so only one propser sends messages
         /*withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
             System.`in`.read()
         }*/
+        //println(omega.leader)
         zkLeader.volunteer()
-        //delay(60000)
-        sendLeaderMsg(id, proposer)
+        delay(30000)
+        sendLeaderMsg(id,proposer)
         startGeneratingMessages(id, proposer)
-        /*withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
+        withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
             server.awaitTermination()
-        }*/
+        }
     }
 }
 

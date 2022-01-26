@@ -10,10 +10,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import rest_api.controller.TransactionController
 import rest_api.repository.model.Transaction
-import rest_api.service.TransactionService
-import rest_api.service.createTransactionOut
-import rest_api.service.ledger
-import rest_api.service.tx_stream
+import rest_api.service.*
+import zookeeper.kotlin.ZooKeeperKt
 
 
 private fun parseToTx(msg: String) : Transaction{
@@ -82,7 +80,7 @@ fun main(args: Array<String>) = mainWith(args) {_, zk ->
     val learnerService = LearnerService(this)
     val acceptorService = AcceptorService(id)
 
-    var token = 1
+    val token = 1
     val numOfShards = 3
 
     val server = ServerBuilder.forPort(id)
@@ -139,16 +137,111 @@ fun main(args: Array<String>) = mainWith(args) {_, zk ->
     startRecievingMessages(atomicBroadcast, id, proposer, numOfShards)
 
     // "Key press" barrier so only one propser sends messages
-    withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
+    /*withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
         System.`in`.read()
-    }
+    }*/
+    delay(30000)
     startGeneratingMessages(id, proposer, token, numOfShards)
     withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
         server.awaitTermination()
     }
 }
 
-    private fun CoroutineScope.startGeneratingMessages(
+suspend fun ringProcess(zk : ZooKeeperKt) {
+    coroutineScope {
+        val learnerService = LearnerService(this)
+        val acceptorService = AcceptorService(id+9)
+
+        val token = 1
+        val numOfShards = 3
+
+        val server = ServerBuilder.forPort((id+9))
+            .apply {
+                if (id > 0) // Apply your own logic: who should be an acceptor
+                    addService(acceptorService)
+                println(id)
+            }
+            .apply {
+                if (id > 0) // Apply your own logic: who should be a learner
+                    addService(learnerService)
+                println(id)
+            }
+            .build()
+
+
+        // Use the atomic broadcast adapter to use the learner service as an atomic broadcast service
+        val atomicBroadcast = object : AtomicBroadcast<String>(learnerService, biSerializer) {
+            // These are dummy implementations
+            // TODO: add real implementations
+            override suspend fun _send(byteString: ByteString) {
+                //println("SENDING STUFF IS IMPORTANT")
+            }
+
+            override fun _deliver(byteString: ByteString) = listOf(biSerializer(byteString))
+        }
+
+        withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
+            server.start()
+        }
+
+        val chans = listOf(8010, 8011, 8012).associateWith {
+            ManagedChannelBuilder.forAddress("localhost", it).usePlaintext().build()!!
+        }
+
+        learnerService.learnerChannels = chans.filterKeys { it != (id+9) }.values.toList()
+
+        val omega = object : OmegaFailureDetector<ID> {
+            override val leader: ID get() = (id+9)
+
+            //override val leader: ID get() = 8001
+            override fun addWatcher(observer: suspend () -> Unit) {
+                // TODO: replace the fallen leader in my shard
+            }
+        }
+
+        // Create a proposer, note that the proposers id's and
+        // the acceptors id's must be all unique (they break symmetry)
+        val proposer = Proposer(
+            id = (id+9), omegaFD = omega, scope = this, acceptors = chans,
+            thisLearner = learnerService,
+        )
+
+        proposer.start()
+
+        startRecievingMessages(atomicBroadcast, (id+9), proposer, numOfShards)
+
+        // "Key press" barrier so only one propser sends messages
+        withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
+            System.`in`.read()
+        }
+        startGeneratingMessages((id+9), proposer, token, numOfShards)
+        withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
+            server.awaitTermination()
+        }
+    }
+}
+
+suspend fun ringProcessNew(
+    atomicBroadcast: AtomicBroadcast<String>, id: Int, proposer: Proposer,
+    numOfShards: Int, token: Int
+) {
+    coroutineScope {
+        println("before recv")
+        startRecievingMessages(atomicBroadcast, id, proposer, numOfShards)
+        // "Key press" barrier so only one propser sends messages
+        /*withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
+            System.`in`.read()
+        }*/
+        println("before timeout")
+        withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
+            System.`in`.read()
+        }
+        println("after timeout")
+        startGeneratingMessages(id, proposer, token, numOfShards)
+    }
+}
+
+private fun CoroutineScope.startGeneratingMessages(
         id: Int,
         proposer: Proposer,
         token: Int,
@@ -159,33 +252,20 @@ fun main(args: Array<String>) = mainWith(args) {_, zk ->
                 break
         }
         launch {
-            println("Started Generating Messages")
-            /*while (true){
-                println(service.ledger)
-                delay(10000)
-            }*/
-            /*(1..1).forEach {
-                val tx = Transaction(id.toLong(), listOf(1), listOf("1"), listOf("2","1"), listOf(20,80))
-                val json = Json.encodeToString(tx)
-                val str = "tx\n" + json + "\n id = $id"
-                val prop = str.toByteStringUtf8()
-                    .also { println("Adding Proposal ${it.toStringUtf8()!!}")}
-                /*val prop = "[Value no $it from $id]".toByteStringUtf8()
-                    .also { println("Adding Proposal ${it.toStringUtf8()!!}") }*/
-                proposer.addProposal(prop)
-                delay(20000)
-            }*/
+            println("Started Generating Rotating Token Messages")
             delay(5000)
-            val stream = tx_stream
+            val stream = tx_stream_token
             for (tx in stream){
                 val json = Json.encodeToString(tx)
-                val str = "tx\n" + json + "\n id = $id"
+                val str = "tx\n$json\n id = $id"
                 val prop = str.toByteStringUtf8()
                 proposer.addProposal(prop)
             }
-            tx_stream.clear()
-            val tokenMsg = ("token " + token.toString()).toByteStringUtf8()
+            tx_stream_token.clear()
+            println("wow1")
+            val tokenMsg = ("token $token").toByteStringUtf8()
             proposer.addProposal(tokenMsg)
+            println("wow2")
         }
     }
 

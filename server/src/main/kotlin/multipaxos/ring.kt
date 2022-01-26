@@ -11,7 +11,7 @@ import rest_api.repository.model.Transaction
 import rest_api.service.*
 import zookeeper.kotlin.ZooKeeperKt
 
-
+var outZooKeeper : ZooKeeperKt? = null
 private fun parseToTx(msg: String) : Transaction{
     var de = biSerializer.deserialize(msg.split("\n")[1].toByteStringUtf8())
     de = de.replace("\",\"","\"-\"")
@@ -147,7 +147,7 @@ fun main(args: Array<String>) = mainWith(args) {_, zk ->
 
 suspend fun ringProcess(zk : ZooKeeperKt) {
     coroutineScope {
-
+        outZooKeeper = zk
         val learnerService = LearnerService(this)
         var ringId = id + 9
         /*if (id == 8001 || id == 8004){
@@ -198,7 +198,7 @@ suspend fun ringProcess(zk : ZooKeeperKt) {
         val zkRinger = TokenKeeperLeader.make(zk,id)
         zkRinger.lead()
 
-        val chans = listOf(8010, 8011, 8012, 8013, 8014, 8015).associateWith {
+        val chans = listOf(8010, 8011, 8012, 8013).associateWith {
             ManagedChannelBuilder.forAddress("localhost", it).usePlaintext().build()!!
         }
 

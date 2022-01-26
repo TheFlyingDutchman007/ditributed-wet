@@ -1,14 +1,18 @@
 package rest_api.service
 
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import multipaxos.TokenKeeperLeader
 import multipaxos.currLeader
 import multipaxos.id
+import multipaxos.outZooKeeper
 import org.springframework.stereotype.Service
 import rest_api.repository.model.Clients
 import rest_api.repository.model.Transaction
 import rest_api.repository.model.TransactionsLedger
 import rest_api.repository.model.UTxOs
+import zookeeper.kotlin.ZooKeeperKt
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -58,15 +62,52 @@ var tx_stream_leader : MutableList<Transaction> = mutableListOf()
 var tx_stream_token : MutableList<Transaction> = mutableListOf()
 
 
+fun isTxToMyShard(tx: Transaction) : Boolean{
+    return tx.inputs_address[0].toInt() % numShards == id % numShards
+}
+fun sendTxToProperServer(id: Int, tx:Transaction): Boolean{
+    val server = id + 100
+    val json = Json.encodeToString(tx)
+    val client = HttpClient.newBuilder().build()
+    val request = HttpRequest.newBuilder()
+        .uri(URI.create("http://localhost:$server/submit_transaction"))
+        .POST(HttpRequest.BodyPublishers.ofString(json))
+        .setHeader("Content-Type","application/json")
+        .build()
+    val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+    return response.body() == "true"
+}
+
+
+
 // call this function only after you checked that the tx_id does not exist!!
 fun createTransactionOut(tx: Transaction): Boolean {
+    if (!isTxToMyShard(tx) && tx.tx_id == (-1).toLong()){
+        println("got the tx but I am not the RIGHT SHRAD!!")
+     // TODO: Check mapping and send to correct leader
+        var leaderId = 0
+        runBlocking {
+            val leaders = outZooKeeper?.let { TokenKeeperLeader.make(it,0).getLeaders() }
+            if (leaders != null) {
+                for (l in leaders){
+                    if (l.toInt() % numShards == tx.inputs_address[0].toInt() % numShards)
+                    {
+                        leaderId = l.toInt()
+                    }
+                }
+            }
+        }
+        return sendTxToProperServer(leaderId, tx)
+    }
     if (id != currLeader[0] && tx.tx_id == (-1).toLong()){
         println("got the tx but I am not the leader!!")
-        println(currLeader[0])
-        println(id)
-        val leader = (currLeader[0]+ 100)
-        println("http://localhost:$leader/submit_transaction")
-        val json = Json.encodeToString(tx)
+        //println(currLeader[0])
+        //println(id)
+        // val leader = (currLeader[0]+ 100)
+        return sendTxToProperServer(currLeader[0],tx)
+
+        //println("http://localhost:$leader/submit_transaction")
+        /*val json = Json.encodeToString(tx)
 
         val client = HttpClient.newBuilder().build()
         val request = HttpRequest.newBuilder()
@@ -75,7 +116,7 @@ fun createTransactionOut(tx: Transaction): Boolean {
             .setHeader("Content-Type","application/json")
             .build()
         val response = client.send(request, HttpResponse.BodyHandlers.ofString())
-        return response.body() == "true"
+        return response.body() == "true"*/
         //return true
     }
     var flag : Boolean = false

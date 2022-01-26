@@ -98,12 +98,8 @@ class TokenKeeperLeader private constructor(private val zk: ZooKeeperKt, val id 
         zk.delete("/id")
     }
 
-    suspend fun getLeader() : String{
-        val seqNos = zk.getChildren("/").first
-            .map { Pair(ZKPaths.extractSequentialSuffix(it)!!, it.substring(5,it.length-11)) }
-            .sortedBy { ZKPaths.extractSequentialSuffix(it.first)!! }
-        println(seqNos[0].second)
-        return seqNos[0].first
+    suspend fun getLeaders(): List<String> {
+        return zk.getChildren("/").first
     }
 
 }

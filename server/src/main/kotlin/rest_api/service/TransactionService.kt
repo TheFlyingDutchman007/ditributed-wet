@@ -77,6 +77,15 @@ fun sendTxToProperServer(id: Int, tx:Transaction): Boolean{
     val response = client.send(request, HttpResponse.BodyHandlers.ofString())
     return response.body() == "true"
 }
+fun sendTransferToProperServer(id: Int, sender_address: String, receiver_address: String, amount: Long): Boolean{
+    val server = id + 100
+    val client = HttpClient.newBuilder().build()
+    val request = HttpRequest.newBuilder()
+        .uri(URI.create("http://localhost:$server/transfer/$sender_address/$receiver_address/$amount"))
+        .build()
+    val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+    return response.body() == "true"
+}
 
 
 
@@ -165,6 +174,64 @@ fun createTransactionOut(tx: Transaction): Boolean {
 
 }
 
+fun transferCoinsOut(sender_address: String, receiver_address: String, amount: Long): Boolean{
+    // check if client is my shard
+    if (sender_address.toInt() % numShards != id % numShards){ // not my shard
+        println("got transfer money but I'm not the RIGHT SHARD")
+        var leaderId = 0
+        runBlocking {
+            val leaders = outZooKeeper?.let { TokenKeeperLeader.make(it,0).getLeaders() }
+            if (leaders != null) {
+                for (l in leaders){
+                    if (l.toInt() % numShards == sender_address.toInt() % numShards)
+                    {
+                        leaderId = l.toInt()
+                    }
+                }
+            }
+        }
+        return sendTransferToProperServer(leaderId,sender_address,receiver_address,amount)
+    }
+
+    val input_tx_id = mutableListOf<Long>()
+    val input_address = mutableListOf<String>()
+    val sender_utxos : Set<Long> = getUnspentTransactionsOut(sender_address).keys
+    var coins : Long = 0
+    var enougCoins = false
+    for (utxo in sender_utxos){
+        val tx = getTxFromLedger(ledger,utxo)
+        val tempCoins = getCoinsFromTxOutput(tx,sender_address)
+        coins += tempCoins
+        input_tx_id.add(utxo)
+        input_address.add(sender_address)
+        if (coins >= amount){
+            enougCoins = true
+            break
+        }
+    }
+    if (!enougCoins){
+        println("NOT ENOUGH")
+        // TODO: return message to client
+        return false
+    }
+    val output_address = mutableListOf<String>(receiver_address)
+    val output_coins = mutableListOf<Long>(amount)
+    if (coins > amount){
+        output_address.add(sender_address)
+        output_coins.add(coins-amount)
+    }
+
+    // build a new tx
+    val tx = Transaction(-1,
+        input_tx_id,input_address,
+        output_address,output_coins)
+    return createTransactionOut(tx)
+}
+
+fun getUnspentTransactionsOut(address: String): Map<Long,Unit>{
+    return clients.addresses[address]!!.lst
+}
+
 
 @Service
 class TransactionService (private val shard: Int = 0) {
@@ -209,44 +276,7 @@ class TransactionService (private val shard: Int = 0) {
     fun transferCoins(sender_address: String, receiver_address: String, amount: Long): Boolean {
 
         // for start, we search coins + build input list
-        val input_tx_id = mutableListOf<Long>()
-        val input_address = mutableListOf<String>()
-        val sender_utxos : Set<Long> = getUnspentTransactions(sender_address).keys
-        var coins : Long = 0
-        var enougCoins = false
-        for (utxo in sender_utxos){
-            val tx = getTxFromLedger(ledger,utxo)
-            val tempCoins = getCoinsFromTxOutput(tx,sender_address)
-            coins += tempCoins
-            input_tx_id.add(utxo)
-            input_address.add(sender_address)
-            if (coins >= amount){
-                enougCoins = true
-                break
-            }
-        }
-        if (!enougCoins){
-            println("NOT ENOUGH")
-            // TODO: return message to client
-            return false
-        }
-        val output_address = mutableListOf<String>(receiver_address)
-        val output_coins = mutableListOf<Long>(amount)
-        if (coins > amount){
-            output_address.add(sender_address)
-            output_coins.add(coins-amount)
-        }
-
-        // build a new tx
-        // TODO: choose id
-        val tx = Transaction(-1,
-            input_tx_id,input_address,
-            output_address,output_coins)
-        return createTransaction(tx)
-
-        /*txIds.add(nextId) // might be redundant
-        ledger.txMap.add(nextId)
-        nextId++*/
+        return transferCoinsOut(sender_address,receiver_address,amount)
 
     }
 

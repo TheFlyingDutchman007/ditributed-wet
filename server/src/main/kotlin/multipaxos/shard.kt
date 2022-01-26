@@ -210,6 +210,8 @@ suspend fun shardProcess(zk: ZooKeeperKt) {
         //println(omega.leader)
         zkLeader.volunteer()
         delay(30000)
+        currLeader.clear()
+        currLeader += id
         sendLeaderMsg(id,proposer)
         startGeneratingMessages(id, proposer)
         withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context

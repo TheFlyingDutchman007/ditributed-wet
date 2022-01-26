@@ -2,13 +2,11 @@ package multipaxos
 
 import com.google.protobuf.ByteString
 import com.google.protobuf.kotlin.toByteStringUtf8
-import com.google.protobuf.type
 import io.grpc.ManagedChannelBuilder
 import io.grpc.ServerBuilder
 import kotlinx.coroutines.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import rest_api.controller.TransactionController
 import rest_api.repository.model.Transaction
 import rest_api.service.*
 import zookeeper.kotlin.ZooKeeperKt
@@ -141,7 +139,7 @@ fun main(args: Array<String>) = mainWith(args) {_, zk ->
         System.`in`.read()
     }*/
     delay(30000)
-    startGeneratingMessages(id, proposer, token, numOfShards)
+    startGeneratingMessages(id, proposer, token, numOfShards, zk)
     withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
         server.awaitTermination()
     }
@@ -149,13 +147,28 @@ fun main(args: Array<String>) = mainWith(args) {_, zk ->
 
 suspend fun ringProcess(zk : ZooKeeperKt) {
     coroutineScope {
+        withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
+            System.`in`.read()
+        }
+        val zkRinger = TokenKeeperLeader.make(zk,id)
+        zkRinger.lead()
+
         val learnerService = LearnerService(this)
-        val acceptorService = AcceptorService(id+9)
+        var ringId = 0
+        if (id == 8001 || id == 8004){
+            ringId = 8010
+        }else if (id == 8002 || id == 8005) {
+            ringId = 8011
+        }else if (id == 8003 || id == 8006){
+            ringId = 8012
+        }
+        println(ringId)
+        val acceptorService = AcceptorService(ringId)
 
         val token = 1
         val numOfShards = 3
 
-        val server = ServerBuilder.forPort((id+9))
+        val server = ServerBuilder.forPort(ringId)
             .apply {
                 if (id > 0) // Apply your own logic: who should be an acceptor
                     addService(acceptorService)
@@ -188,10 +201,10 @@ suspend fun ringProcess(zk : ZooKeeperKt) {
             ManagedChannelBuilder.forAddress("localhost", it).usePlaintext().build()!!
         }
 
-        learnerService.learnerChannels = chans.filterKeys { it != (id+9) }.values.toList()
+        learnerService.learnerChannels = chans.filterKeys { it != ringId }.values.toList()
 
         val omega = object : OmegaFailureDetector<ID> {
-            override val leader: ID get() = (id+9)
+            override val leader: ID get() = ringId
 
             //override val leader: ID get() = 8001
             override fun addWatcher(observer: suspend () -> Unit) {
@@ -202,26 +215,27 @@ suspend fun ringProcess(zk : ZooKeeperKt) {
         // Create a proposer, note that the proposers id's and
         // the acceptors id's must be all unique (they break symmetry)
         val proposer = Proposer(
-            id = (id+9), omegaFD = omega, scope = this, acceptors = chans,
+            id = ringId, omegaFD = omega, scope = this, acceptors = chans,
             thisLearner = learnerService,
         )
 
         proposer.start()
 
-        startRecievingMessages(atomicBroadcast, (id+9), proposer, numOfShards)
+        startRecievingMessages(atomicBroadcast, ringId, proposer, numOfShards)
 
         // "Key press" barrier so only one propser sends messages
-        withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
+        /*withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
             System.`in`.read()
-        }
-        startGeneratingMessages((id+9), proposer, token, numOfShards)
+        }*/
+        startGeneratingMessages(ringId, proposer, token, numOfShards, zk)
+
         withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
             server.awaitTermination()
         }
     }
 }
 
-suspend fun ringProcessNew(
+/*suspend fun ringProcessNew(
     atomicBroadcast: AtomicBroadcast<String>, id: Int, proposer: Proposer,
     numOfShards: Int, token: Int
 ) {
@@ -239,33 +253,51 @@ suspend fun ringProcessNew(
         println("after timeout")
         startGeneratingMessages(id, proposer, token, numOfShards)
     }
-}
+}*/
 
 private fun CoroutineScope.startGeneratingMessages(
         id: Int,
         proposer: Proposer,
         token: Int,
-        num0fShards: Int
+        num0fShards: Int,
+        zk: ZooKeeperKt,
     ) {
-        while (true){
+        /*while (true){
             if ((id - 8000) % num0fShards == token % num0fShards)
                 break
-        }
+        }*/
         launch {
-            println("Started Generating Rotating Token Messages")
-            delay(5000)
-            val stream = tx_stream_token
-            for (tx in stream){
-                val json = Json.encodeToString(tx)
-                val str = "tx\n$json\n id = $id"
-                val prop = str.toByteStringUtf8()
-                proposer.addProposal(prop)
+            val stayAlive = TokenKeeperLiveliness.make(zk)
+            while(true) {
+                stayAlive.rotate()
+                while (true){
+                    val toke = stayAlive.getFirst()
+                    if (toke == stayAlive.mySeqNo && toke.toInt() % num0fShards != id % num0fShards){
+                        stayAlive.unlock()
+                        stayAlive.rotate()
+                        continue
+                    }
+                    if (toke.toInt() % num0fShards == id % num0fShards && toke == stayAlive.mySeqNo)
+                        break
+                    //println(stayAlive.getFirst())
+                    //delay(5000)
+                }
+                println("Started Generating Rotating Token Messages")
+                delay(10000)
+                val stream = tx_stream_token
+                for (tx in stream) {
+                    val json = Json.encodeToString(tx)
+                    val str = "tx\n$json\n id = $id"
+                    val prop = str.toByteStringUtf8()
+                    proposer.addProposal(prop)
+                }
+                tx_stream_token.clear()
+                val tok = stayAlive.getFirst().toInt()
+                val tokenMsg = ("token $tok").toByteStringUtf8()
+                proposer.addProposal(tokenMsg)
+                println("SEND TOKEN TO RING")
+                stayAlive.unlock()
             }
-            tx_stream_token.clear()
-            println("wow1")
-            val tokenMsg = ("token $token").toByteStringUtf8()
-            proposer.addProposal(tokenMsg)
-            println("wow2")
         }
     }
 
@@ -282,10 +314,10 @@ private fun CoroutineScope.startGeneratingMessages(
                     val b = (id - 8000) % numOfShards
                     // println(a)
                     // println(b)
-                    if (a == b) {
+                    /*if (a == b) {
                         println("Start because of token")
-                        startGeneratingMessages(id, proposer, token + 1, numOfShards)
-                    }
+                        //startGeneratingMessages(id, proposer, token + 1, numOfShards)
+                    }*/
                 } else if (msg.split("\n")[0] == "tx"){
                     val tx = parseToTx(msg)
                     //println(tx)

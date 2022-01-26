@@ -1,21 +1,24 @@
 package multipaxos
 
+import com.google.protobuf.Timestamp
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import zookeeper.kotlin.ZKPaths
 import zookeeper.kotlin.ZooKeeperKt
 import zookeeper.kotlin.createflags.Ephemeral
 import zookeeper.kotlin.createflags.Sequential
+import java.sql.Date
+import java.sql.Time
 
 
 fun main(args: Array<String>) = mainWith(args) { _, zk ->
     val zkleader = LeaderElection.make(zk, "shard1")
-    println("Waiting for the election")
+    /*println("Waiting for the election")
     zkleader.volunteer()
     println("I Am groot")
     delay(20_000)
     println("I Am not groot")
-    zkleader.unlock()
+    zkleader.unlock()*/
 }
 
 

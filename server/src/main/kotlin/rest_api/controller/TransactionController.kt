@@ -48,4 +48,8 @@ class TransactionController (private val transactionService: TransactionService)
     fun getTransactionHistoryForAll():
             TransactionsLedger = transactionService.getTransactionHistoryForAll()
 
+    @GetMapping("/keys")
+    fun getPublicKeys():
+            MutableMap<Int,String> = transactionService.getPublicKeys()
+
 }

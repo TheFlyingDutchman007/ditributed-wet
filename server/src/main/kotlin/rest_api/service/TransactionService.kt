@@ -3,10 +3,7 @@ package rest_api.service
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import multipaxos.TokenKeeperLeader
-import multipaxos.currLeader
-import multipaxos.id
-import multipaxos.outZooKeeper
+import multipaxos.*
 import org.springframework.stereotype.Service
 import rest_api.repository.model.Clients
 import rest_api.repository.model.Transaction
@@ -321,6 +318,10 @@ class TransactionService (private val shard: Int = 0) {
 
     fun getStream() : List<Transaction>{
         return tx_stream_leader
+    }
+
+    fun getPublicKeys() : MutableMap<Int,String>{
+        return mapOfPublicKeys
     }
 
 }

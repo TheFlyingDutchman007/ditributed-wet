@@ -10,8 +10,12 @@ import kotlinx.serialization.json.Json
 import rest_api.repository.model.Transaction
 import rest_api.service.*
 import zookeeper.kotlin.ZooKeeperKt
+import java.util.*
 
 var outZooKeeper : ZooKeeperKt? = null
+var sendedShardKeys : Boolean = false
+val sendToShardKeys = mutableMapOf<Int,String>()
+val sendToRingKeys = mutableListOf<Pair<Int,String>>()
 private fun parseToTx(msg: String) : Transaction{
     var de = biSerializer.deserialize(msg.split("\n")[1].toByteStringUtf8())
     de = de.replace("\",\"","\"-\"")
@@ -67,7 +71,7 @@ fun addOtherShardTx(tx : Transaction){
     runApplication<SpringBootBoilerplateApplication>()
 }*/
 
-fun main(args: Array<String>) = mainWith(args) {_, zk ->
+/*fun main(args: Array<String>) = mainWith(args) {_, zk ->
 
     //org.apache.log4j.BasicConfigurator.configure()
 
@@ -132,7 +136,7 @@ fun main(args: Array<String>) = mainWith(args) {_, zk ->
 
     proposer.start()
 
-    startRecievingMessages(atomicBroadcast, id, proposer, numOfShards)
+    startRecievingMessages(atomicBroadcast, proposer, numOfShards)
 
     // "Key press" barrier so only one propser sends messages
     /*withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
@@ -143,7 +147,7 @@ fun main(args: Array<String>) = mainWith(args) {_, zk ->
     withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
         server.awaitTermination()
     }
-}
+}*/
 
 suspend fun ringProcess(zk : ZooKeeperKt) {
     coroutineScope {
@@ -198,7 +202,7 @@ suspend fun ringProcess(zk : ZooKeeperKt) {
         val zkRinger = TokenKeeperLeader.make(zk,id)
         zkRinger.lead()
 
-        val chans = listOf(8010, 8011, 8012, 8013).associateWith {
+        val chans = listOf(8010, 8011, 8012, 8013, 8014).associateWith {
             ManagedChannelBuilder.forAddress("localhost", it).usePlaintext().build()!!
         }
 
@@ -222,7 +226,7 @@ suspend fun ringProcess(zk : ZooKeeperKt) {
 
         proposer.start()
 
-        startRecievingMessages(atomicBroadcast, ringId, proposer, numOfShards)
+        startRecievingMessages(atomicBroadcast, proposer, numOfShards)
 
         // "Key press" barrier so only one propser sends messages
         /*withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
@@ -281,6 +285,13 @@ private fun CoroutineScope.startGeneratingMessages(
                 }
                 println("Started Generating Rotating Token Messages")
                 delay(10000)
+                if (!sendedShardKeys){
+                    for (key in mapOfPublicKeys){
+                        val prop = buildSendPublicKeyMessage(key.key, key.value).toByteStringUtf8()
+                        proposer.addProposal(prop)
+                    }
+                    sendedShardKeys = true
+                }
                 val stream = tx_stream_token
                 for (tx in stream) {
                     val json = Json.encodeToString(tx)
@@ -300,15 +311,15 @@ private fun CoroutineScope.startGeneratingMessages(
 
     // token message: "token x"
     private fun CoroutineScope.startRecievingMessages(
-        atomicBroadcast: AtomicBroadcast<String>, id: Int,
+        atomicBroadcast: AtomicBroadcast<String>,
         proposer: Proposer, numOfShards: Int) {
         launch {
             for ((`seq#`, msg) in atomicBroadcast.stream) {
                 println("Message: #$`seq#`: \n $msg \n  received!")
                 if (msg.split(" ")[0] == "token") {
                     val token = msg.split(" ")[1].toInt()
-                    val a = (token + 1) % numOfShards
-                    val b = (id - 8000) % numOfShards
+                    //val a = (token + 1) % numOfShards
+                    //val b = (id - 8000) % numOfShards
                     // println(a)
                     // println(b)
                     /*if (a == b) {
@@ -319,6 +330,18 @@ private fun CoroutineScope.startGeneratingMessages(
                     val tx = parseToTx(msg)
                     //println(tx)
                     addOtherShardTx(tx)
+                }
+                else if (msg.split(" ")[0] == "PublicKeyMsg"){
+                    val senderID = msg.split(" ")[1].toInt()
+                    val senderKey = msg.split(" ")[2]
+                    val shardIDS = getShardIDs(id)
+                    if (shardIDS.contains(senderID))
+                        continue
+                    mapOfPublicKeys[senderID] = senderKey
+                    sendToShardKeys[senderID] = senderKey
+                    for (key in mapOfPublicKeys){
+                        println("Public key of " + key.key +" is: \n" + key.value)
+                    }
                 }
             }
         }

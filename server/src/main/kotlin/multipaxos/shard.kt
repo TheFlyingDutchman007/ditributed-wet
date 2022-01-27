@@ -11,6 +11,7 @@ import kotlinx.serialization.json.Json
 import rest_api.repository.model.Transaction
 import rest_api.service.*
 import zookeeper.kotlin.ZooKeeperKt
+import java.util.*
 
 var id : Int = 0
 var currLeader : MutableList<Int> = mutableListOf(id)
@@ -72,7 +73,7 @@ private fun addMyLeaderTx(tx : Transaction){
     runApplication<SpringBootBoilerplateApplication>()
 }*/
 
-suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
+/*suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
 
 
     id = args[0].toInt()
@@ -143,7 +144,7 @@ suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
     withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
         server.awaitTermination()
     }
-}
+}*/
 
 suspend fun shardProcess(zk: ZooKeeperKt) {
     coroutineScope {
@@ -201,8 +202,7 @@ suspend fun shardProcess(zk: ZooKeeperKt) {
 
         proposer.start()
 
-        startRecievingMessages(atomicBroadcast)
-
+        startRecievingMessages(atomicBroadcast, proposer)
         // "Key press" barrier so only one propser sends messages
         /*withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
             System.`in`.read()
@@ -213,6 +213,8 @@ suspend fun shardProcess(zk: ZooKeeperKt) {
         currLeader.clear()
         currLeader += id
         sendLeaderMsg(id,proposer)
+        delay(4000)
+        sendKeyMsg(id,proposer)
         startGeneratingMessages(id, proposer)
         withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
             server.awaitTermination()
@@ -220,7 +222,7 @@ suspend fun shardProcess(zk: ZooKeeperKt) {
     }
 }
 
-suspend fun shardProcessNew(
+/*suspend fun shardProcessNew(
     atomicBroadcast: AtomicBroadcast<String>, currLeader: MutableList<Int>, zkLeader : LeaderElection,
     id: Int, proposer: Proposer
     ){
@@ -234,7 +236,7 @@ suspend fun shardProcessNew(
         sendLeaderMsg(id, proposer)
         startGeneratingMessages(id, proposer)
     }
-}
+}*/
 
 private fun CoroutineScope.startGeneratingMessages(
     id: Int,
@@ -244,6 +246,13 @@ private fun CoroutineScope.startGeneratingMessages(
         println("Started Generating Messages")
         while(true){
             delay(2000)
+            // send keys arrived from the ring to rest of my shard
+            for (key in sendToShardKeys){
+                val msg = buildSendPublicKeyMessage(key.key, key.value).toByteStringUtf8()
+                proposer.addProposal(msg)
+            }
+            sendToShardKeys.clear()
+
             for (tx in tx_stream_leader){
                 val json = Json.encodeToString(tx)
                 val str = "tx\n" + json + "\n id = $id"
@@ -257,6 +266,7 @@ private fun CoroutineScope.startGeneratingMessages(
 
 private fun CoroutineScope.startRecievingMessages(
     atomicBroadcast: AtomicBroadcast<String>,
+    proposer: Proposer,
 ) {
     launch {
         for ((`seq#`, msg) in atomicBroadcast.stream) {
@@ -275,7 +285,27 @@ private fun CoroutineScope.startRecievingMessages(
                 val tx = parseToTx(msg)
                 //println(tx)
                 addMyLeaderTx(tx)
+            } else if (msg.split(" ")[0] == "PublicKeyMsg"){
+                val senderID = msg.split(" ")[1].toInt()
+                if (mapOfPublicKeys.containsKey(senderID)) continue // if we already have key, continue
+                val senderKey = msg.split(" ")[2]
+                mapOfPublicKeys[senderID] = senderKey
+                if (senderID == currLeader[0]){
+                    sendKeyMsg(id,proposer)
+                }
+                //val secret = msg.split(" ")[3]
+                /*println("before")
+                println(cryptoFun.unsignMessage(secret,senderKey))
+                println("after")*/
+                /*if (senderID != currLeader[0]){
+                    println("I'll send the leader my key too!!")
+                    sendKeyMsg(id, proposer)
+                }*/
+                /*for (key in mapOfPublicKeys){
+                    println("Public key of " + key.key +" is: \n" + key.value)
+                }*/
             }
+
             /*else{
                 if (id != currLeader[0]) {
                     val str = "I am not the leader. id = " + id
@@ -298,6 +328,16 @@ private fun CoroutineScope.sendLeaderMsg(id: Int, proposer: Proposer){
         delay(2000)
         val str = "Leader " + id.toString()
         val prop = str.toByteStringUtf8()
+        proposer.addProposal(prop)
+    }
+}
+
+private fun CoroutineScope.sendKeyMsg(id: Int, proposer: Proposer){
+    launch {
+        println("Sending PUBLICKEY")
+        delay(1000)
+        val prop = buildSendPublicKeyMessage(id,
+            Base64.getEncoder().encodeToString(cryptoFun.publicKey.encoded)).toByteStringUtf8()
         proposer.addProposal(prop)
     }
 }

@@ -1,12 +1,8 @@
 package multipaxos
 
-import com.google.protobuf.ByteString
-import io.grpc.ManagedChannelBuilder
-import io.grpc.ServerBuilder
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.withContext
+import java.util.*
 
 fun getShardIDs (id : Int) : List<Int>{
     val shard = id % numShards
@@ -19,9 +15,20 @@ fun getShardIDs (id : Int) : List<Int>{
     }
 }
 
+val mapOfPublicKeys : MutableMap<Int,String> = mutableMapOf()
+
+val cryptoFun : RSAFun = RSAFun()
+
+fun buildSendPublicKeyMessage(id: Int, pubKey: String): String {
+    return "PublicKeyMsg $id $pubKey"
+}
+
 
 suspend fun main(args: Array<String>) = mainWith(args) {_, zk ->
     id = args[0].toInt()
+    // set self crypto data
+    mapOfPublicKeys[id] = Base64.getEncoder().
+    encodeToString(cryptoFun.publicKey.encoded)
     awaitAll(
         async { shardProcess(zk) },
        async { ringProcess(zk) }

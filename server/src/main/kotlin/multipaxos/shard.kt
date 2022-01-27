@@ -215,7 +215,7 @@ suspend fun shardProcess(zk: ZooKeeperKt) {
         sendLeaderMsg(id,proposer)
         delay(4000)
         sendKeyMsg(id,proposer)
-        startGeneratingMessages(id, proposer)
+        startGeneratingMessages(proposer)
         withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
             server.awaitTermination()
         }
@@ -239,7 +239,6 @@ suspend fun shardProcess(zk: ZooKeeperKt) {
 }*/
 
 private fun CoroutineScope.startGeneratingMessages(
-    id: Int,
     proposer: Proposer
 ) {
     launch {
@@ -255,7 +254,8 @@ private fun CoroutineScope.startGeneratingMessages(
 
             for (tx in tx_stream_leader){
                 val json = Json.encodeToString(tx)
-                val str = "tx\n" + json + "\n id = $id"
+                val str = "tx\n" + json + "\n$id\n" + cryptoFun.signMessage(id.toString(),
+                    Base64.getEncoder().encodeToString(cryptoFun.privateKey.encoded))
                 val prop = str.toByteStringUtf8()
                 proposer.addProposal(prop)
             }
@@ -283,6 +283,13 @@ private fun CoroutineScope.startRecievingMessages(
                 }
             } else if (msg.split("\n")[0] == "tx"){
                 val tx = parseToTx(msg)
+                val senderID = msg.split("\n")[2].toInt()
+                val secretCy = msg.split("\n")[3]
+                if (mapOfPublicKeys.containsKey(senderID)){
+                    val publicKey = mapOfPublicKeys[senderID]
+                    val secretPlain = publicKey?.let { cryptoFun.unsignMessage(secretCy, it) }
+                    println("ID $senderID secret is $secretPlain")
+                }
                 //println(tx)
                 addMyLeaderTx(tx)
             } else if (msg.split(" ")[0] == "PublicKeyMsg"){

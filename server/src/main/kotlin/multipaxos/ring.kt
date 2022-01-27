@@ -202,7 +202,7 @@ suspend fun ringProcess(zk : ZooKeeperKt) {
         val zkRinger = TokenKeeperLeader.make(zk,id)
         zkRinger.lead()
 
-        val chans = listOf(8010, 8011, 8012, 8013, 8014).associateWith {
+        val chans = listOf(8010, 8011, 8012, 8013, 8014, 8015).associateWith {
             ManagedChannelBuilder.forAddress("localhost", it).usePlaintext().build()!!
         }
 
@@ -261,11 +261,11 @@ suspend fun ringProcess(zk : ZooKeeperKt) {
 }*/
 
 private fun CoroutineScope.startGeneratingMessages(
-        id: Int,
-        proposer: Proposer,
-        token: Int,
-        num0fShards: Int,
-        zk: ZooKeeperKt,
+    ringId: Int,
+    proposer: Proposer,
+    token: Int,
+    num0fShards: Int,
+    zk: ZooKeeperKt,
     ) {
         launch {
             val stayAlive = TokenKeeperLiveliness.make(zk)
@@ -273,12 +273,12 @@ private fun CoroutineScope.startGeneratingMessages(
                 stayAlive.rotate()
                 while (true){
                     val toke = stayAlive.getFirst()
-                    if (toke == stayAlive.mySeqNo && toke.toInt() % num0fShards != id % num0fShards){
+                    if (toke == stayAlive.mySeqNo && toke.toInt() % num0fShards != ringId % num0fShards){
                         stayAlive.unlock()
                         stayAlive.rotate()
                         continue
                     }
-                    if (toke.toInt() % num0fShards == id % num0fShards && toke == stayAlive.mySeqNo)
+                    if (toke.toInt() % num0fShards == ringId % num0fShards && toke == stayAlive.mySeqNo)
                         break
                     //println(stayAlive.getFirst())
                     //delay(5000)
@@ -295,7 +295,8 @@ private fun CoroutineScope.startGeneratingMessages(
                 val stream = tx_stream_token
                 for (tx in stream) {
                     val json = Json.encodeToString(tx)
-                    val str = "tx\n$json\n id = $id"
+                    val str = "tx\n" + json + "\n$id\n" + cryptoFun.signMessage(id.toString(),
+                        Base64.getEncoder().encodeToString(cryptoFun.privateKey.encoded))
                     val prop = str.toByteStringUtf8()
                     proposer.addProposal(prop)
                 }
@@ -328,6 +329,13 @@ private fun CoroutineScope.startGeneratingMessages(
                     }*/
                 } else if (msg.split("\n")[0] == "tx"){
                     val tx = parseToTx(msg)
+                    val senderID = msg.split("\n")[2].toInt()
+                    val secretCy = msg.split("\n")[3]
+                    if (mapOfPublicKeys.containsKey(senderID)){
+                        val publicKey = mapOfPublicKeys[senderID]
+                        val secretPlain = publicKey?.let { cryptoFun.unsignMessage(secretCy, it) }
+                        println("ID $senderID secret is $secretPlain")
+                    }
                     //println(tx)
                     addOtherShardTx(tx)
                 }
